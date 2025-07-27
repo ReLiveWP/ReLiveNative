@@ -2,7 +2,17 @@
     "files.associations": {
         "windows.h": "c",
         "wincon.h": "c",
-        "stdarg.h": "c"
+        "stdarg.h": "c",
+        "new": "cpp",
+        "array": "cpp",
+        "string": "cpp",
+        "string_view": "cpp",
+        "atomic": "cpp",
+        "initializer_list": "cpp",
+        "utility": "cpp",
+        "cmath": "cpp",
+        "cstdio": "cpp",
+        "system_error": "cpp"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

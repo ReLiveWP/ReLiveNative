@@ -1,22 +1,51 @@
 
 #include "msidcrl.h"
+#include "wlidcomm.h"
 
 extern "C"
 {
     HRESULT Initialize(GUID *lpGuid, DWORD dwVersionMajor, DWORD dwVersionMinor)
     {
-        wchar_t data[200] = {0};
+        WCHAR data[512] = {0};
+        WCHAR lpszExecutable[MAX_PATH] = {0};
 
-        GUID guid = *lpGuid;
+        GetModuleFileName(NULL, lpszExecutable, MAX_PATH);
 
-        wsprintf(data, L"lpGuid={%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX}, dwVersionMajor=%d, dwVersionMinor=%d",
-               guid.Data1, guid.Data2, guid.Data3,
-               guid.Data4[0], guid.Data4[1], guid.Data4[2], guid.Data4[3],
-               guid.Data4[4], guid.Data4[5], guid.Data4[6], guid.Data4[7], dwVersionMajor, dwVersionMinor);
+        wsprintfW(data, L"Initialize: lpszExecutable=%s, lpGuid=" FORMAT_GUID L", dwVersionMajor=%d, dwVersionMinor=%d",
+                  lpszExecutable, PRINT_GUID(*lpGuid), dwVersionMajor, dwVersionMinor);
 
-        MessageBox(NULL, data, L"msidcrl initialized", MB_OK);
+        HANDLE hEvent, hDriver;
+        // unlike the original WLIDSVC, we need our driver handle at all times
+        hDriver = CreateFile(WLIDSVC_FILE, 0, 0, NULL, OPEN_EXISTING, 0, NULL);
+        if (hDriver == INVALID_HANDLE_VALUE)
+        {
+            ActivateDevice(WLIDSVC_NAME, 0);
+
+            hDriver = CreateFile(WLIDSVC_FILE, 0, 0, NULL, OPEN_EXISTING, 0, NULL);
+            if (hDriver == INVALID_HANDLE_VALUE)
+            {
+                goto error;
+            }
+        }
+
+        hEvent = CreateEvent(NULL, TRUE, FALSE, WLIDSVC_READY_EVENT);
+        if (hEvent != 0)
+        {
+            WaitForSingleObject(hEvent, 180000);
+            CloseHandle(hEvent);
+            hEvent = 0;
+        }
+
+        DeviceIoControl(hDriver, IOCTL_WLIDSVC_LOG_MESSAGE_WIDE, data, 200, NULL, 0, NULL, NULL);
 
         return S_OK;
+
+    error:
+        if (hDriver)
+            CloseHandle(hDriver);
+        if (hEvent)
+            CloseHandle(hEvent);
+        return -1;
     }
 
     HRESULT Uninitialize()

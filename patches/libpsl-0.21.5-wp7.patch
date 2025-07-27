@@ -18,17 +18,6 @@ diff -crB libpsl-0.21.5-orig/configure libpsl-0.21.5-patched/configure
         ;;
       *)
         ;;
-Only in libpsl-0.21.5-patched/docs/libpsl: Makefile
-Only in libpsl-0.21.5-patched/docs/libpsl: version.xml
-Only in libpsl-0.21.5-patched/fuzz: .deps
-Only in libpsl-0.21.5-patched/fuzz: Makefile
-Only in libpsl-0.21.5-patched/include: Makefile
-Only in libpsl-0.21.5-patched/msvc: Makefile
-Only in libpsl-0.21.5-patched/po: Makefile
-Only in libpsl-0.21.5-patched/po: Makefile.in
-Only in libpsl-0.21.5-patched/po: POTFILES
-Only in libpsl-0.21.5-patched/src: .deps
-Only in libpsl-0.21.5-patched/src: Makefile
 diff -crB libpsl-0.21.5-orig/src/psl.c libpsl-0.21.5-patched/src/psl.c
 *** libpsl-0.21.5-orig/src/psl.c	2024-01-13 19:08:10.000000000 +0000
 --- libpsl-0.21.5-patched/src/psl.c	2025-07-26 17:34:53.165633969 +0100
@@ -49,10 +38,6 @@ diff -crB libpsl-0.21.5-orig/src/psl.c libpsl-0.21.5-patched/src/psl.c
   #include <limits.h> /* for UINT_MAX */
   
   #ifdef HAVE_NL_LANGINFO
-Only in libpsl-0.21.5-patched/tests: .deps
-Only in libpsl-0.21.5-patched/tests: Makefile
-Only in libpsl-0.21.5-patched/tools: .deps
-Only in libpsl-0.21.5-patched/tools: Makefile
 diff -crB libpsl-0.21.5-orig/tools/psl.c libpsl-0.21.5-patched/tools/psl.c
 *** libpsl-0.21.5-orig/tools/psl.c	2024-01-13 18:16:32.000000000 +0000
 --- libpsl-0.21.5-patched/tools/psl.c	2025-07-26 17:37:09.234023974 +0100

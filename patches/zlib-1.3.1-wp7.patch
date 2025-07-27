@@ -1,0 +1,80 @@
+diff -crB zlib-1.3.1-orig/gzlib.c zlib-1.3.1-patched/gzlib.c
+*** zlib-1.3.1-orig/gzlib.c	2024-01-22 18:32:37.000000000 +0000
+--- zlib-1.3.1-patched/gzlib.c	2025-07-26 16:26:33.081595609 +0100
+***************
+*** 5,11 ****
+  
+  #include "gzguts.h"
+  
+! #if defined(_WIN32) && !defined(__BORLANDC__)
+  #  define LSEEK _lseeki64
+  #else
+  #if defined(_LARGEFILE64_SOURCE) && _LFS64_LARGEFILE-0
+--- 5,11 ----
+  
+  #include "gzguts.h"
+  
+! #if defined(_WIN32) && !defined(__BORLANDC__) && !defined(UNDER_CE)
+  #  define LSEEK _lseeki64
+  #else
+  #if defined(_LARGEFILE64_SOURCE) && _LFS64_LARGEFILE-0
+diff -crB zlib-1.3.1-orig/win32/Makefile.gcc zlib-1.3.1-patched/win32/Makefile.gcc
+*** zlib-1.3.1-orig/win32/Makefile.gcc	2017-10-13 04:27:14.000000000 +0100
+--- zlib-1.3.1-patched/win32/Makefile.gcc	2025-07-26 16:38:56.521131653 +0100
+***************
+*** 32,44 ****
+  #
+  # Set to 1 if shared object needs to be installed
+  #
+! SHARED_MODE=0
+  
+  #LOC = -DZLIB_DEBUG -g
+  
+! PREFIX =
+  CC = $(PREFIX)gcc
+! CFLAGS = $(LOC) -O3 -Wall
+  
+  AS = $(CC)
+  ASFLAGS = $(LOC) -Wall
+--- 32,44 ----
+  #
+  # Set to 1 if shared object needs to be installed
+  #
+! SHARED_MODE=1
+  
+  #LOC = -DZLIB_DEBUG -g
+  
+! PREFIX = arm-mingw32ce-
+  CC = $(PREFIX)gcc
+! CFLAGS = $(LOC) -Os -Wall
+  
+  AS = $(CC)
+  ASFLAGS = $(LOC) -Wall
+diff -crB zlib-1.3.1-orig/zconf.h zlib-1.3.1-patched/zconf.h
+*** zlib-1.3.1-orig/zconf.h	2024-01-22 18:32:37.000000000 +0000
+--- zlib-1.3.1-patched/zconf.h	2025-07-26 16:24:52.614388441 +0100
+***************
+*** 433,443 ****
+     typedef unsigned long z_crc_t;
+  #endif
+  
+! #ifdef HAVE_UNISTD_H    /* may be set to #if 1 by ./configure */
+  #  define Z_HAVE_UNISTD_H
+  #endif
+  
+! #ifdef HAVE_STDARG_H    /* may be set to #if 1 by ./configure */
+  #  define Z_HAVE_STDARG_H
+  #endif
+  
+--- 433,443 ----
+     typedef unsigned long z_crc_t;
+  #endif
+  
+! #if 1    /* was set to #if 1 by ./configure */
+  #  define Z_HAVE_UNISTD_H
+  #endif
+  
+! #if 1    /* was set to #if 1 by ./configure */
+  #  define Z_HAVE_STDARG_H
+  #endif
+  

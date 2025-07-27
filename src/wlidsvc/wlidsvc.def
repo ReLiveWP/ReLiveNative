@@ -1,0 +1,11 @@
+EXPORTS
+    WLI_Close @1
+    WLI_Deinit @ 2
+    WLI_IOControl @ 3
+    WLI_Init @ 4
+    WLI_Open @ 5
+    WLI_PowerDown @ 6
+    WLI_PowerUp @ 7
+    WLI_Read @ 8
+    WLI_Seek @ 9 
+    WLI_Write @ 10

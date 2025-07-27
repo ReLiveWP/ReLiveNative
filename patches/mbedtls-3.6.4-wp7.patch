@@ -1,0 +1,215 @@
+diff -crB mbedtls-3.6.4-orig/CMakeLists.txt mbedtls-3.6.4-patched/CMakeLists.txt
+*** mbedtls-3.6.4-orig/CMakeLists.txt	2025-06-30 07:24:52.910244000 +0100
+--- mbedtls-3.6.4-patched/CMakeLists.txt	2025-07-26 17:01:14.597003256 +0100
+***************
+*** 239,249 ****
+      # To avoid the performance problem, we use -O2 when GCC version is lower than 7.0.
+      # It doesn't slow down much even with modern compiler versions.
+      if (GCC_VERSION VERSION_LESS 7.0)
+!         message(STATUS "USING O2")
+!         set(CMAKE_C_FLAGS_ASAN        "-fsanitize=address -fno-common -fsanitize=undefined -fno-sanitize-recover=all -O2")
+      else()
+!         message(STATUS "USING O3")
+!         set(CMAKE_C_FLAGS_ASAN        "-fsanitize=address -fno-common -fsanitize=undefined -fno-sanitize-recover=all -O3")
+      endif()
+      set(CMAKE_C_FLAGS_ASANDBG     "-fsanitize=address -fno-common -fsanitize=undefined -fno-sanitize-recover=all -O1 -g3 -fno-omit-frame-pointer -fno-optimize-sibling-calls")
+      set(CMAKE_C_FLAGS_TSAN        "-fsanitize=thread -O3")
+--- 239,249 ----
+      # To avoid the performance problem, we use -O2 when GCC version is lower than 7.0.
+      # It doesn't slow down much even with modern compiler versions.
+      if (GCC_VERSION VERSION_LESS 7.0)
+!         message(STATUS "USING Os")
+!         set(CMAKE_C_FLAGS_ASAN        "-fsanitize=address -fno-common -fsanitize=undefined -fno-sanitize-recover=all -Os")
+      else()
+!         message(STATUS "USING Os")
+!         set(CMAKE_C_FLAGS_ASAN        "-fsanitize=address -fno-common -fsanitize=undefined -fno-sanitize-recover=all -Os")
+      endif()
+      set(CMAKE_C_FLAGS_ASANDBG     "-fsanitize=address -fno-common -fsanitize=undefined -fno-sanitize-recover=all -O1 -g3 -fno-omit-frame-pointer -fno-optimize-sibling-calls")
+      set(CMAKE_C_FLAGS_TSAN        "-fsanitize=thread -O3")
+Only in mbedtls-3.6.4-patched/framework/scripts: __pycache__
+Only in mbedtls-3.6.4-patched/framework/scripts/mbedtls_framework: __pycache__
+diff -crB mbedtls-3.6.4-orig/include/mbedtls/debug.h mbedtls-3.6.4-patched/include/mbedtls/debug.h
+*** mbedtls-3.6.4-orig/include/mbedtls/debug.h	2025-06-30 07:24:52.944270600 +0100
+--- mbedtls-3.6.4-patched/include/mbedtls/debug.h	2025-07-26 16:59:05.722913571 +0100
+***************
+*** 111,117 ****
+  #if defined(__MINGW32__) || (defined(_MSC_VER) && _MSC_VER < 1900)
+     #include <inttypes.h>
+     #define MBEDTLS_PRINTF_SIZET     PRIuPTR
+!    #define MBEDTLS_PRINTF_LONGLONG  "I64d"
+  #else \
+      /* defined(__MINGW32__) || (defined(_MSC_VER) && _MSC_VER < 1900) */
+     #define MBEDTLS_PRINTF_SIZET     "zu"
+--- 111,117 ----
+  #if defined(__MINGW32__) || (defined(_MSC_VER) && _MSC_VER < 1900)
+     #include <inttypes.h>
+     #define MBEDTLS_PRINTF_SIZET     PRIuPTR
+!    #define MBEDTLS_PRINTF_LONGLONG  "lld"
+  #else \
+      /* defined(__MINGW32__) || (defined(_MSC_VER) && _MSC_VER < 1900) */
+     #define MBEDTLS_PRINTF_SIZET     "zu"
+***************
+*** 124,130 ****
+  #if !defined(PRId64)
+  #define MBEDTLS_PRINTF_MS_TIME MBEDTLS_PRINTF_LONGLONG
+  #else
+! #define MBEDTLS_PRINTF_MS_TIME PRId64
+  #endif
+  #endif /* MBEDTLS_PRINTF_MS_TIME */
+  
+--- 124,130 ----
+  #if !defined(PRId64)
+  #define MBEDTLS_PRINTF_MS_TIME MBEDTLS_PRINTF_LONGLONG
+  #else
+! #define MBEDTLS_PRINTF_MS_TIME MBEDTLS_PRINTF_LONGLONG
+  #endif
+  #endif /* MBEDTLS_PRINTF_MS_TIME */
+  
+diff -crB mbedtls-3.6.4-orig/include/mbedtls/mbedtls_config.h mbedtls-3.6.4-patched/include/mbedtls/mbedtls_config.h
+*** mbedtls-3.6.4-orig/include/mbedtls/mbedtls_config.h	2025-06-30 07:24:52.948094600 +0100
+--- mbedtls-3.6.4-patched/include/mbedtls/mbedtls_config.h	2025-07-26 18:07:11.459010858 +0100
+***************
+*** 249,255 ****
+   * Uncomment a macro to enable alternate implementation of specific base
+   * platform function
+   */
+! //#define MBEDTLS_PLATFORM_SETBUF_ALT
+  //#define MBEDTLS_PLATFORM_EXIT_ALT
+  //#define MBEDTLS_PLATFORM_TIME_ALT
+  //#define MBEDTLS_PLATFORM_FPRINTF_ALT
+--- 249,255 ----
+   * Uncomment a macro to enable alternate implementation of specific base
+   * platform function
+   */
+! #define MBEDTLS_PLATFORM_SETBUF_ALT
+  //#define MBEDTLS_PLATFORM_EXIT_ALT
+  //#define MBEDTLS_PLATFORM_TIME_ALT
+  //#define MBEDTLS_PLATFORM_FPRINTF_ALT
+***************
+*** 4097,4103 ****
+   * See the description of #MBEDTLS_PLATFORM_MEMORY for more details (same principles as for MBEDTLS_PLATFORM_STD_CALLOC apply).
+   */
+  //#define MBEDTLS_PLATFORM_STD_FREE            free
+! //#define MBEDTLS_PLATFORM_STD_SETBUF      setbuf /**< Default setbuf to use, can be undefined */
+  //#define MBEDTLS_PLATFORM_STD_EXIT            exit /**< Default exit to use, can be undefined */
+  //#define MBEDTLS_PLATFORM_STD_TIME            time /**< Default time to use, can be undefined. MBEDTLS_HAVE_TIME must be enabled */
+  //#define MBEDTLS_PLATFORM_STD_FPRINTF      fprintf /**< Default fprintf to use, can be undefined */
+--- 4097,4103 ----
+   * See the description of #MBEDTLS_PLATFORM_MEMORY for more details (same principles as for MBEDTLS_PLATFORM_STD_CALLOC apply).
+   */
+  //#define MBEDTLS_PLATFORM_STD_FREE            free
+! #define MBEDTLS_PLATFORM_STD_SETBUF      NULL /**< Default setbuf to use, can be undefined */
+  //#define MBEDTLS_PLATFORM_STD_EXIT            exit /**< Default exit to use, can be undefined */
+  //#define MBEDTLS_PLATFORM_STD_TIME            time /**< Default time to use, can be undefined. MBEDTLS_HAVE_TIME must be enabled */
+  //#define MBEDTLS_PLATFORM_STD_FPRINTF      fprintf /**< Default fprintf to use, can be undefined */
+***************
+*** 4377,4380 ****
+  //#define MBEDTLS_X509_MAX_INTERMEDIATE_CA   8   /**< Maximum number of intermediate CAs in a verification chain. */
+  //#define MBEDTLS_X509_MAX_FILE_PATH_LEN     512 /**< Maximum length of a path/filename string in bytes including the null terminator character ('\0'). */
+  
+! /** \} name SECTION: Module configuration options */
+--- 4377,4380 ----
+  //#define MBEDTLS_X509_MAX_INTERMEDIATE_CA   8   /**< Maximum number of intermediate CAs in a verification chain. */
+  //#define MBEDTLS_X509_MAX_FILE_PATH_LEN     512 /**< Maximum length of a path/filename string in bytes including the null terminator character ('\0'). */
+  
+! /** \} name SECTION: Module configuration options */
+\ No newline at end of file
+diff -crB mbedtls-3.6.4-orig/library/platform_util.c mbedtls-3.6.4-patched/library/platform_util.c
+*** mbedtls-3.6.4-orig/library/platform_util.c	2025-06-30 07:24:52.982529400 +0100
+--- mbedtls-3.6.4-patched/library/platform_util.c	2025-07-26 18:06:24.632275986 +0100
+***************
+*** 108,114 ****
+  #elif defined(__STDC_LIB_EXT1__) && !defined(__IAR_SYSTEMS_ICC__)
+          memset_s(buf, len, 0, len);
+  #elif defined(_WIN32)
+!         SecureZeroMemory(buf, len);
+  #else
+          memset_func(buf, 0, len);
+  #endif
+--- 108,114 ----
+  #elif defined(__STDC_LIB_EXT1__) && !defined(__IAR_SYSTEMS_ICC__)
+          memset_s(buf, len, 0, len);
+  #elif defined(_WIN32)
+!         ZeroMemory(buf, len);
+  #else
+          memset_func(buf, 0, len);
+  #endif
+***************
+*** 249,261 ****
+  #include <windows.h>
+  mbedtls_ms_time_t mbedtls_ms_time(void)
+  {
+      FILETIME ct;
+      mbedtls_ms_time_t current_ms;
+  
+!     GetSystemTimeAsFileTime(&ct);
+      current_ms = ((mbedtls_ms_time_t) ct.dwLowDateTime +
+!                   ((mbedtls_ms_time_t) (ct.dwHighDateTime) << 32LL))/10000;
+!     return current_ms;
+  }
+  #else
+  #error "No mbedtls_ms_time available"
+--- 249,268 ----
+  #include <windows.h>
+  mbedtls_ms_time_t mbedtls_ms_time(void)
+  {
++     SYSTEMTIME st;
+      FILETIME ct;
+      mbedtls_ms_time_t current_ms;
+  
+!     GetSystemTime(&st);
+!     SystemTimeToFileTime(&st, &ct);
+      current_ms = ((mbedtls_ms_time_t) ct.dwLowDateTime +
+!                   ((mbedtls_ms_time_t) (ct.dwHighDateTime) << 32LL)) / 10000;
+!     return current_ms;  
+! 
+!     // GetSystemTimeAsFileTime(&ct);
+!     // current_ms = ((mbedtls_ms_time_t) ct.dwLowDateTime +
+!     //               ((mbedtls_ms_time_t) (ct.dwHighDateTime) << 32LL))/10000;
+!     // return current_ms;
+  }
+  #else
+  #error "No mbedtls_ms_time available"
+diff -crB mbedtls-3.6.4-orig/library/psa_its_file.c mbedtls-3.6.4-patched/library/psa_its_file.c
+*** mbedtls-3.6.4-orig/library/psa_its_file.c	2025-06-30 07:24:52.989946000 +0100
+--- mbedtls-3.6.4-patched/library/psa_its_file.c	2025-07-26 16:56:08.230712713 +0100
+***************
+*** 46,52 ****
+  /* As rename fails on Windows if the new filepath already exists,
+   * use MoveFileExA with the MOVEFILE_REPLACE_EXISTING flag instead.
+   * Returns 0 on success, nonzero on failure. */
+! #if defined(_WIN32)
+  #define rename_replace_existing(oldpath, newpath) \
+      (!MoveFileExA(oldpath, newpath, MOVEFILE_REPLACE_EXISTING))
+  #else
+--- 46,74 ----
+  /* As rename fails on Windows if the new filepath already exists,
+   * use MoveFileExA with the MOVEFILE_REPLACE_EXISTING flag instead.
+   * Returns 0 on success, nonzero on failure. */
+! #if defined(UNDER_CE)
+! static BOOL rename_replace_existing(const char* oldpath, const char* newpath) {
+!     wchar_t oldpath_wide[MAX_PATH];
+!     wchar_t newpath_wide[MAX_PATH];
+!     DWORD oldpath_len = MultiByteToWideChar(CP_ACP, 0, oldpath, -1, oldpath_wide, MAX_PATH);
+!     DWORD newpath_len = MultiByteToWideChar(CP_ACP, 0, newpath, -1, newpath_wide, MAX_PATH);
+!     if (oldpath_len == 0 || newpath_len == 0) {
+!         return 0;
+!     }
+!     oldpath_wide[oldpath_len - 1] = L'\0'; 
+!     newpath_wide[newpath_len - 1] = L'\0'; 
+!     return MoveFileW(oldpath_wide, newpath_wide);
+! }
+! static BOOL remove(const char* path) {
+!     wchar_t path_wide[MAX_PATH];
+!     DWORD path_len = MultiByteToWideChar(CP_ACP, 0, path, -1, path_wide, MAX_PATH);
+!     if (path_len == 0) {
+!         return 0;
+!     }
+!     path_wide[path_len - 1] = L'\0'; 
+!     return DeleteFileW(path_wide);
+! }
+! #elif defined(_WIN32)
+  #define rename_replace_existing(oldpath, newpath) \
+      (!MoveFileExA(oldpath, newpath, MOVEFILE_REPLACE_EXISTING))
+  #else
+Only in mbedtls-3.6.4-patched/scripts: __pycache__

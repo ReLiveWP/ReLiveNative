@@ -1,0 +1,68 @@
+diff -crB curl-8.15.0-orig/CMake/PickyWarnings.cmake curl-8.15.0-patched/CMake/PickyWarnings.cmake
+*** curl-8.15.0-orig/CMake/PickyWarnings.cmake	2025-07-16 07:22:04.000000000 +0100
+--- curl-8.15.0-patched/CMake/PickyWarnings.cmake	2025-07-26 17:52:25.574013434 +0100
+***************
+*** 199,209 ****
+          list(APPEND _picky_enable
+            -Wjump-misses-init               #             gcc  4.5
+          )
+-         if(MINGW)
+-           list(APPEND _picky_enable
+-             -Wno-pedantic-ms-format        #             gcc  4.5 (MinGW-only)
+-           )
+-         endif()
+        endif()
+        if(CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 4.8)
+          list(APPEND _picky_enable
+--- 199,204 ----
+diff -crB curl-8.15.0-orig/CMakeLists.txt curl-8.15.0-patched/CMakeLists.txt
+*** curl-8.15.0-orig/CMakeLists.txt	2025-07-16 07:22:04.000000000 +0100
+--- curl-8.15.0-patched/CMakeLists.txt	2025-07-26 18:12:20.374719540 +0100
+***************
+*** 548,553 ****
+--- 548,557 ----
+    list(APPEND CMAKE_REQUIRED_LIBRARIES "net" "m" "atomic")
+  endif()
+  
++ if(WINCE)
++   list(APPEND CURL_LIBS "-latomic -lbcrypt") 
++ endif()
++ 
+  # Include all the necessary files for macros
+  include(CMakePushCheckState)
+  include(CheckFunctionExists)
+***************
+*** 601,611 ****
+--- 605,617 ----
+      set(_win32_winsock "ws2_32")
+    endif()
+    set(_win32_crypt32 "crypt32")
++   set(_win32_bcrypt "bcrypt")
+    set(_win32_secur32 "secur32")
+  
+    if(MINGW32CE)  # FIXME upstream: must specify the full path to avoid CMake converting "ws2" to "ws2.lib"
+      set(_win32_winsock "${MINGW32CE_LIBRARY_DIR}/lib${_win32_winsock}.a")
+      set(_win32_crypt32 "${MINGW32CE_LIBRARY_DIR}/lib${_win32_crypt32}.a")
++     set(_win32_bcrypt "${MINGW32CE_LIBRARY_DIR}/lib${_win32_bcrypt}.a")
+      set(_win32_secur32 "${MINGW32CE_LIBRARY_DIR}/lib${_win32_secur32}.a")
+    endif()
+  elseif(DOS)
+***************
+*** 1958,1965 ****
+    if(NOT WINCE AND NOT WINDOWS_STORE)
+      list(APPEND CURL_LIBS "iphlpapi")
+    endif()
+!   if(NOT WINCE)
+!     list(APPEND CURL_LIBS "bcrypt")
+    endif()
+  
+    if(NOT WINCE)
+--- 1964,1971 ----
+    if(NOT WINCE AND NOT WINDOWS_STORE)
+      list(APPEND CURL_LIBS "iphlpapi")
+    endif()
+!   if(WINCE)
+!     list(APPEND CURL_LIBS "${_win32_bcrypt}")
+    endif()
+  
+    if(NOT WINCE)

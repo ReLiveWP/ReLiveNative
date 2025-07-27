@@ -1,0 +1,113 @@
+diff -crB libpsl-0.21.5-orig/configure libpsl-0.21.5-patched/configure
+*** libpsl-0.21.5-orig/configure	2024-01-13 21:45:00.000000000 +0000
+--- libpsl-0.21.5-patched/configure	2025-07-26 17:37:40.650764683 +0100
+***************
+*** 19026,19032 ****
+        # Select Windows NT/2000 and later, for WSAStringToAddressW()
+        CPPFLAGS="$CPPFLAGS -D_WIN32_WINNT=0x500"
+        # Needed for network support
+!       LIBS="$LIBS -lws2_32"
+        ;;
+      *)
+        ;;
+--- 19026,19032 ----
+        # Select Windows NT/2000 and later, for WSAStringToAddressW()
+        CPPFLAGS="$CPPFLAGS -D_WIN32_WINNT=0x500"
+        # Needed for network support
+!       LIBS="$LIBS -lws2"
+        ;;
+      *)
+        ;;
+Only in libpsl-0.21.5-patched/docs/libpsl: Makefile
+Only in libpsl-0.21.5-patched/docs/libpsl: version.xml
+Only in libpsl-0.21.5-patched/fuzz: .deps
+Only in libpsl-0.21.5-patched/fuzz: Makefile
+Only in libpsl-0.21.5-patched/include: Makefile
+Only in libpsl-0.21.5-patched/msvc: Makefile
+Only in libpsl-0.21.5-patched/po: Makefile
+Only in libpsl-0.21.5-patched/po: Makefile.in
+Only in libpsl-0.21.5-patched/po: POTFILES
+Only in libpsl-0.21.5-patched/src: .deps
+Only in libpsl-0.21.5-patched/src: Makefile
+diff -crB libpsl-0.21.5-orig/src/psl.c libpsl-0.21.5-patched/src/psl.c
+*** libpsl-0.21.5-orig/src/psl.c	2024-01-13 19:08:10.000000000 +0000
+--- libpsl-0.21.5-patched/src/psl.c	2025-07-26 17:34:53.165633969 +0100
+***************
+*** 69,75 ****
+  #endif
+  #include <ctype.h>
+  #include <time.h>
+! #include <errno.h>
+  #include <limits.h> /* for UINT_MAX */
+  
+  #ifdef HAVE_NL_LANGINFO
+--- 69,75 ----
+  #endif
+  #include <ctype.h>
+  #include <time.h>
+! // #include <errno.h>
+  #include <limits.h> /* for UINT_MAX */
+  
+  #ifdef HAVE_NL_LANGINFO
+Only in libpsl-0.21.5-patched/tests: .deps
+Only in libpsl-0.21.5-patched/tests: Makefile
+Only in libpsl-0.21.5-patched/tools: .deps
+Only in libpsl-0.21.5-patched/tools: Makefile
+diff -crB libpsl-0.21.5-orig/tools/psl.c libpsl-0.21.5-patched/tools/psl.c
+*** libpsl-0.21.5-orig/tools/psl.c	2024-01-13 18:16:32.000000000 +0000
+--- libpsl-0.21.5-patched/tools/psl.c	2025-07-26 17:37:09.234023974 +0100
+***************
+*** 51,57 ****
+  #include <stdlib.h>
+  #include <string.h>
+  #include <ctype.h>
+! #include <locale.h>
+  
+  #include <libpsl.h>
+  
+--- 51,57 ----
+  #include <stdlib.h>
+  #include <string.h>
+  #include <ctype.h>
+! // #include <locale.h>
+  
+  #include <libpsl.h>
+  
+***************
+*** 98,106 ****
+  	static char buf[64];
+  	struct tm tm;
+  
+! 	if (LOCALTIME_R_SUCCESSFUL(&t, &tm))
+! 		strftime(buf, sizeof(buf), "%a, %d %b %Y %H:%M:%S %Z", &tm);
+! 	else
+  		strcpy(buf, "--notime--");
+  	return buf;
+  }
+--- 98,106 ----
+  	static char buf[64];
+  	struct tm tm;
+  
+! 	//if (LOCALTIME_R_SUCCESSFUL(&t, &tm))
+! 	//	strftime(buf, sizeof(buf), "%a, %d %b %Y %H:%M:%S %Z", &tm);
+! 	//else
+  		strcpy(buf, "--notime--");
+  	return buf;
+  }
+***************
+*** 112,118 ****
+  	psl_ctx_t *psl = (psl_ctx_t *) psl_latest(NULL);
+  
+  	/* set current locale according to the environment variables */
+! 	setlocale(LC_ALL, "");
+  
+  	for (arg = argv + 1; arg < argv + argc; arg++) {
+  		if (**arg == '-') {
+--- 112,118 ----
+  	psl_ctx_t *psl = (psl_ctx_t *) psl_latest(NULL);
+  
+  	/* set current locale according to the environment variables */
+! 	// setlocale(LC_ALL, "");
+  
+  	for (arg = argv + 1; arg < argv + argc; arg++) {
+  		if (**arg == '-') {

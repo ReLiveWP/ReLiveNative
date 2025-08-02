@@ -10,7 +10,8 @@
             "defines": [
                 "UNDER_CE",
                 "_UNICODE",
-                "_WIN32_WCE=1"
+                "_WIN32_WCE=1",
+                "__GNUC__"
             ],
             "compilerPath": "/opt/cegcc/bin/arm-mingw32ce-gcc",
             "cStandard": "c11",

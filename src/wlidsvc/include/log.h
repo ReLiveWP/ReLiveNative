@@ -7,14 +7,25 @@
 #include <windows.h>
 #include <cstring>
 
+#define STRINGIZE(x) STRINGIZE2(x)
+#define STRINGIZE2(x) #x
+#define LINE_STRING STRINGIZE(__LINE__)
+#define LOG(fmt, ...) wlidsvc::log::info().log(__FILE__ ":" LINE_STRING " " fmt, __VA_ARGS__)
+#define LOG_WIDE(fmt, ...) wlidsvc::log::info().log(TEXT(__FILE__) L":" TEXT(LINE_STRING) L" " fmt, __VA_ARGS__)
+
+#define VALIDATE_PARAMETER(x)                                                        \
+    if ((x))                                                                         \
+    {                                                                                \
+        wlidsvc::log::info().log(__FILE__ " " LINE_STRING " ASSERTION FAILED: " #x); \
+        return E_INVALIDARG;                                                         \
+    }
+
 #define WINDOWS_TICK 10000000
 #define SEC_TO_UNIX_EPOCH 11644473600LL
-static inline time_t filetime_to_time(const FILETIME &ft)
+static inline __time64_t filetime_to_time(const FILETIME &ft)
 {
-    long long secs = ((*(LONGLONG *)&(ft)) - SEC_TO_UNIX_EPOCH) / WINDOWS_TICK;
-    time_t t = (time_t)secs;
-    if (secs != (long long)t)
-        return (time_t)-1;
+    long long secs = ((*(LONGLONG *)&(ft)) / WINDOWS_TICK) - SEC_TO_UNIX_EPOCH;
+    __time64_t t = (__time64_t)secs;
     return t;
 }
 
@@ -68,8 +79,10 @@ namespace wlidsvc::log
         logmsg_t(logmsg_t &&other) // string&& is an rvalue reference to a string
         {
             size_ = other.size_;
+            ts_ = other.ts_;
             data_ = other.data_;
             other.size_ = 0;
+            other.ts_ = 0;
             other.data_ = nullptr;
         }
 
@@ -77,6 +90,7 @@ namespace wlidsvc::log
         {
             std::swap(data_, other.data_);
             std::swap(size_, other.size_);
+            std::swap(ts_, other.ts_);
             return *this;
         }
 
@@ -86,7 +100,7 @@ namespace wlidsvc::log
                 delete[] data_;
         }
 
-        const time_t ts() const
+        const __time64_t ts() const
         {
             return ts_;
         }
@@ -102,7 +116,7 @@ namespace wlidsvc::log
         }
 
     private:
-        time_t ts_;
+        __time64_t ts_;
         size_t size_;
         char *data_;
     };

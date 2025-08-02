@@ -1,10 +1,11 @@
 project(wlidsvc C CXX)
 
 add_library(wlidsvc SHARED
+    src/dllmain.cpp
+    src/globals.cpp
     src/log.cpp
     src/wlidsvc.cpp
     src/ioctls.cpp
-    src/nanoprintf.c
 )
 
 target_link_libraries(wlidsvc PRIVATE wlidshared "-latomic" "-lcurl")

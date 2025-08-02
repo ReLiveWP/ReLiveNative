@@ -46,3 +46,4 @@ EXPORTS
     WSChangeSQSA @ 81
     WSGetHIPImage @ 84
     WSResolveHIP @ 85
+    TEST_InitHooks @ 999

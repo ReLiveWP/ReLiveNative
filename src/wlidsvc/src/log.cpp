@@ -1,6 +1,6 @@
-
 #include "log.h"
 #include "util.h"
+#include "nanoprintf.h"
 
 namespace wlidsvc::log
 {
@@ -24,7 +24,7 @@ namespace wlidsvc::log
         va_list args1;
         va_start(args1, fmt);
 
-        char* tmp = wchar_to_char(fmt);
+        char *tmp = wchar_to_char(fmt);
 
         log_real(tmp, args1);
         va_end(args1);
@@ -42,6 +42,11 @@ namespace wlidsvc::log
         char *buffer = new char[size];
         npf_vsnprintf(buffer, size, fmt, args2);
         va_end(args2);
+
+#ifndef UNDER_CE
+        OutputDebugStringA(buffer);
+        OutputDebugStringA("\n");
+#endif
 
         logmsg_t msg_t(buffer);
 
@@ -80,7 +85,7 @@ namespace wlidsvc::log
                 if (!self->curl_)
                     break;
 
-                curl_easy_setopt(self->curl_, CURLOPT_URL, "ws://172.16.0.3:5678/");
+                curl_easy_setopt(self->curl_, CURLOPT_URL, "ws://172.16.0.2:5678/");
                 curl_easy_setopt(self->curl_, CURLOPT_CONNECT_ONLY, 2L);
 
                 res = curl_easy_perform(self->curl_);
@@ -104,7 +109,7 @@ namespace wlidsvc::log
                 {
                     size_t sent, buflen = msg.size();
                     const char *buf = msg.data();
-                    res = curl_ws_send(self->curl_, buf, buflen, &sent, 0, CURLWS_BINARY);
+                    res = curl_ws_send(self->curl_, buf, buflen, &sent, 0, CURLWS_TEXT);
                     if (!res)
                     {
                         buf += sent;

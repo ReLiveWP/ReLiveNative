@@ -2,6 +2,8 @@ project(wlidshared C CXX)
 
 add_library(wlidshared STATIC
     src/wlidshared.c
+    src/nanoprintf.c
+    src/gthr-win32.c
 )
 
 target_include_directories(wlidshared PUBLIC

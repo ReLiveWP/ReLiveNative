@@ -1,7 +1,10 @@
 project(msidcrl C CXX)
 
 add_library(msidcrl SHARED
+    src/dllmain.cpp
+    src/globals.cpp
     src/msidcrl.cpp
+    src/test.cpp
 )
 
 target_link_libraries(msidcrl PRIVATE wlidshared)

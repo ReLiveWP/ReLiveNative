@@ -227,3 +227,31 @@ extern "C"
         OUT LPWSTR *pwszUnk3);
     HRESULT WSResolveHIP(IN LPVOID lpUnk1, IN HIDENTITY *hIdentity, LPCWSTR szUnk2);
 }
+
+#if IS_TESTING
+#define ActivateDevice(...)
+#undef CreateFile
+#define CreateFile CreateFile_TestHook
+extern "C" HANDLE CreateFile_TestHook(
+    LPCWSTR lpFileName,
+    DWORD dwDesiredAccess,
+    DWORD dwShareMode,
+    LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+    DWORD dwCreationDisposition,
+    DWORD dwFlagsAndAttributes,
+    HANDLE hTemplateFile);
+#undef DeviceIoControl
+#define DeviceIoControl DeviceIoControl_TestHook
+extern "C" BOOL DeviceIoControl_TestHook(
+    HANDLE hDevice,
+    DWORD dwIoControlCode,
+    LPVOID lpInBuffer,
+    DWORD nInBufferSize,
+    LPVOID lpOutBuffer,
+    DWORD nOutBufferSize,
+    LPDWORD lpBytesReturned,
+    LPOVERLAPPED lpOverlapped);
+#undef CloseHandle
+#define CloseHandle CloseHandle_TestHook
+extern "C" BOOL CloseHandle_TestHook(HANDLE hDevice);
+#endif

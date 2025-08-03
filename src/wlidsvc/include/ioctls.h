@@ -10,3 +10,6 @@ IOCTL_FUNC(HandleLogMessageWide);
 
 IOCTL_FUNC(InitHandle);
 IOCTL_FUNC(GetDefaultID);
+
+IOCTL_FUNC(CreateIdentityHandle);
+IOCTL_FUNC(CloseIdentityHandle);

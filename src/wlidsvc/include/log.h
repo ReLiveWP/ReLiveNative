@@ -7,8 +7,6 @@
 #include <windows.h>
 #include <cstring>
 
-#define STRINGIZE(x) STRINGIZE2(x)
-#define STRINGIZE2(x) #x
 #define LINE_STRING STRINGIZE(__LINE__)
 #define LOG(fmt, ...) wlidsvc::log::info().log(__FILE__ ":" LINE_STRING " " fmt, __VA_ARGS__)
 #define LOG_WIDE(fmt, ...) wlidsvc::log::info().log(TEXT(__FILE__) L":" TEXT(LINE_STRING) L" " fmt, __VA_ARGS__)
@@ -34,7 +32,9 @@ static inline char *wchar_to_char(const wchar_t *fmt)
     size_t length = ::wcslen(fmt);
     int dwLength = WideCharToMultiByte(CP_UTF8, 0, fmt, length, NULL, 0, NULL, NULL);
 
-    char *tmp = new char[dwLength + 1];
+    char *tmp = new (std::nothrow) char[dwLength + 1];
+    if (tmp == nullptr)
+        return nullptr;
     WideCharToMultiByte(CP_UTF8, 0, fmt, length, tmp, dwLength, NULL, NULL);
     tmp[dwLength] = '\0';
 

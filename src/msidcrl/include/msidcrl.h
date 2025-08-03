@@ -16,15 +16,15 @@ extern "C"
 
     typedef struct tag_PIH
     {
-
-    } PIH, *LPPIH;
+        DWORD_PTR hIdentitySrv;
+    } PIH, *PPIH;
 
     typedef PIH *HIDENTITY;
 
     typedef struct tag_PEIH
     {
 
-    } PEIH, *LPPEIH;
+    } PEIH, *PPEIH;
 
     typedef PEIH *HENUMIDENTITY;
 

@@ -83,6 +83,7 @@ IOCTL_FUNC(GetDefaultID)
 
     VALIDATE_PARAMETER(dwLenOut != sizeof(IOCTL_GET_DEFAULT_ID_RETURN));
 
+    // TODO: this is 1:1 with the original code, not convinced this is what we want to be doing strictly speaking
     util::hkey_t hKey;
     DWORD disposition;
     LONG status = RegCreateKeyEx(HKEY_CURRENT_USER, TEXT("Software\\Microsoft\\IdentityCRL\\Environment\\Production"), 0, NULL, 0, 0x2001, NULL, hKey.put(), &disposition);
@@ -103,5 +104,40 @@ IOCTL_FUNC(GetDefaultID)
     data.szDefaultId[dwLen] = L'\0';
 
     std::memcpy(pBufOut, &data, sizeof(IOCTL_GET_DEFAULT_ID_RETURN));
+    return hr;
+}
+
+IOCTL_FUNC(CreateIdentityHandle)
+{
+    HRESULT hr = S_OK;
+    VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_CREATE_IDENTITY_HANDLE_ARGS));
+    VALIDATE_PARAMETER(dwLenOut != sizeof(IOCTL_CREATE_IDENTITY_HANDLE_RETURN));
+
+    auto *pArgs = reinterpret_cast<PIOCTL_CREATE_IDENTITY_HANDLE_ARGS>(pBufIn);
+    auto *pReturn = reinterpret_cast<PIOCTL_CREATE_IDENTITY_HANDLE_RETURN>(pBufOut);
+
+    auto *identityCtx = new (std::nothrow) identity_ctx_t(pArgs->szMemberName, pArgs->dwIdentityFlags);
+    if (identityCtx == nullptr)
+        return E_OUTOFMEMORY;
+
+    pReturn->hIdentity = (DWORD_PTR)identityCtx;
+    hContext->associated_identities.push_back(identityCtx);
+
+    return hr;
+}
+
+IOCTL_FUNC(CloseIdentityHandle)
+{
+    HRESULT hr = S_OK;
+    VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_CLOSE_IDENTITY_HANDLE_ARGS));
+
+    auto *pArgs = reinterpret_cast<PIOCTL_CLOSE_IDENTITY_HANDLE_ARGS>(pBufIn);
+    auto &identities = hContext->associated_identities;
+    identity_ctx_t *identity = reinterpret_cast<identity_ctx_t *>(pArgs->hIdentity);
+
+    identities.erase(std::remove(identities.begin(), identities.end(), identity), identities.end());
+
+    delete identity;
+
     return hr;
 }

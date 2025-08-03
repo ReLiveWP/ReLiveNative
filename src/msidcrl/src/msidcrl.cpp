@@ -153,7 +153,18 @@ extern "C"
             return E_INVALIDARG;
         }
 
-        return E_NOTIMPL;
+        HRESULT hr = S_OK;
+        IOCTL_CLOSE_IDENTITY_HANDLE_ARGS args{.hIdentity = hIdentity->hIdentitySrv};
+        if (FAILED(hr = DeviceIoControl(g_hDriver,
+                                        IOCTL_WLIDSVC_CLOSE_IDENTITY_HANDLE,
+                                        &args, sizeof(IOCTL_CLOSE_IDENTITY_HANDLE_ARGS),
+                                        NULL, 0,
+                                        NULL, NULL)))
+            return hr;
+
+        PassportFreeMemory(hIdentity);
+
+        return hr;
     }
 
     HRESULT CreateIdentityHandle(
@@ -163,12 +174,37 @@ extern "C"
     {
         LOG_MESSAGE_FMT(TEXT("CreateIdentityHandle: szMemberName=%s; dwIdentityFlags=%d;"), LOG_STRING(szMemberName), dwIdentityFlags);
 
-        if (phIdentity == nullptr || szMemberName == nullptr)
+        if (phIdentity == nullptr)
         {
             return E_INVALIDARG;
         }
 
-        return E_NOTIMPL;
+        HRESULT hr = S_OK;
+        IOCTL_CREATE_IDENTITY_HANDLE_ARGS args{};
+        IOCTL_CREATE_IDENTITY_HANDLE_RETURN retVal{};
+
+        if (szMemberName != nullptr)
+            wcsncpy(args.szMemberName, szMemberName, 128);
+        else
+            memset(args.szMemberName, 0, 128 * sizeof(WCHAR));
+        args.dwIdentityFlags = dwIdentityFlags;
+
+        if (FAILED(hr = DeviceIoControl(g_hDriver,
+                                        IOCTL_WLIDSVC_CREATE_IDENTITY_HANDLE,
+                                        &args, sizeof(IOCTL_CREATE_IDENTITY_HANDLE_ARGS),
+                                        &retVal, sizeof(IOCTL_CREATE_IDENTITY_HANDLE_RETURN),
+                                        NULL, NULL)))
+            return hr;
+
+        PPIH hIdentity = (PPIH)malloc(sizeof(PIH));
+        if (hIdentity == NULL)
+            return E_OUTOFMEMORY;
+
+        hIdentity->hIdentitySrv = retVal.hIdentity;
+
+        *phIdentity = hIdentity;
+
+        return hr;
     }
 
     HRESULT CreateIdentityHandleFromAuthState(
@@ -326,7 +362,7 @@ extern "C"
 
         // *szDefaultID = nullptr;
         HRESULT hr = S_OK;
-        if (FAILED(hr = (HRESULT)DeviceIoControl(g_hDriver, IOCTL_WLIDSVC_INIT_HANDLE, NULL, 0, &sData, sizeof(IOCTL_GET_DEFAULT_ID_RETURN), NULL, NULL)))
+        if (FAILED(hr = (HRESULT)DeviceIoControl(g_hDriver, IOCTL_WLIDSVC_GET_DEFAULT_ID, NULL, 0, &sData, sizeof(IOCTL_GET_DEFAULT_ID_RETURN), NULL, NULL)))
         {
             *szDefaultID = nullptr;
             return hr;

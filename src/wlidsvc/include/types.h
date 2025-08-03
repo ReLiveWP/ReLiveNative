@@ -1,20 +1,32 @@
 #pragma once
 #include <string>
 #include <string_view>
+#include <vector>
 #include <curl/curl.h>
 
 namespace wlidsvc
 {
+    struct identity_ctx_t
+    {
+        inline identity_ctx_t(LPWSTR szMemberName, DWORD dwFlags) : member_name(szMemberName), flags(dwFlags) {}
+        inline ~identity_ctx_t() {}
+
+        std::wstring member_name;
+        DWORD flags;
+    };
+
     struct handle_ctx_t
     {
         inline handle_ctx_t(DWORD _hThis) : hThis(_hThis)
         {
-            this->curl = curl_multi_init();
         }
 
         inline ~handle_ctx_t()
         {
-            curl_multi_cleanup(this->curl);
+            for (auto identity : associated_identities)
+            {
+                delete identity;
+            }
         }
 
         DWORD hThis;
@@ -22,7 +34,6 @@ namespace wlidsvc
         DWORD major_version;
         DWORD minor_version;
         std::wstring exec_path;
-
-        CURLM *curl;
+        std::vector<identity_ctx_t *> associated_identities;
     };
 }

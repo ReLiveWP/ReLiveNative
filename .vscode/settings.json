@@ -68,7 +68,17 @@
         "coroutine": "cpp",
         "numbers": "cpp",
         "semaphore": "cpp",
-        "stop_token": "cpp"
+        "stop_token": "cpp",
+        "curl.h": "c",
+        "gthr-win32.h": "c",
+        "errno.h": "c",
+        "ranges": "cpp",
+        "cerrno": "cpp",
+        "mutex": "cpp",
+        "forward_list": "cpp",
+        "valarray": "cpp",
+        "codecvt": "cpp"
     },
-    "C_Cpp.errorSquiggles": "disabled"
+    "C_Cpp.errorSquiggles": "disabled",
+    "C_Cpp.default.compilerPath": "/opt/cegcc/bin/arm-mingw32ce-gcc"
 }

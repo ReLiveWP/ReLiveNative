@@ -5,8 +5,8 @@ set(CMAKE_C_COMPILER arm-mingw32ce-gcc)
 set(CMAKE_CXX_COMPILER arm-mingw32ce-g++)
 set(CMAKE_RC_COMPILER arm-mingw32ce-windres)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -s -D_WIN32_WINNT=0x0502 -DUNICODE -Wl,--enable-auto-import")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s -D_WIN32_WINNT=0x0502 -DUNICODE -Wl,--enable-auto-import")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_WIN32_WINNT=0x0502 -DUNICODE -Wl,--enable-auto-import ")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_WIN32_WINNT=0x0502 -DUNICODE -Wl,--enable-auto-import ")
 
 set(CMAKE_INSTALL_PREFIX /opt/cegcc/arm-mingw32ce)
 

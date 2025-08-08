@@ -458,8 +458,17 @@ extern "C"
             return E_INVALIDARG;
         }
 
-        *pdwEnvironment = 0; // Default to production environment
+        HRESULT hr = S_OK;
+        IOCTL_GET_LIVE_ENVIRONMENT_RETURN retVal{};
+        if (FAILED(hr = DeviceIoControl(g_hDriver,
+                                        IOCTL_WLIDSVC_GET_LIVE_ENVIRONMENT,
+                                        NULL, 0,
+                                        &retVal, sizeof(IOCTL_GET_LIVE_ENVIRONMENT_RETURN),
+                                        NULL, NULL)))
+            return hr;
 
+        *pdwEnvironment = retVal.dwLiveEnv; 
+        
         return S_OK;
     }
 

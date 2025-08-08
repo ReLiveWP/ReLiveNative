@@ -9,6 +9,7 @@ IOCTL_FUNC(HandleLogMessage);
 IOCTL_FUNC(HandleLogMessageWide);
 
 IOCTL_FUNC(InitHandle);
+IOCTL_FUNC(GetLiveEnvironment);
 IOCTL_FUNC(GetDefaultID);
 
 IOCTL_FUNC(CreateIdentityHandle);

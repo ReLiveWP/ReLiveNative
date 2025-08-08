@@ -1,6 +1,13 @@
 #include "log.h"
 #include "util.h"
+#include "config.h"
 #include "nanoprintf.h"
+
+#include <string>
+
+#include <cerrno>
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
 namespace wlidsvc::log
 {
@@ -84,8 +91,17 @@ namespace wlidsvc::log
                 self->curl_ = curl_easy_init();
                 if (!self->curl_)
                     break;
+                auto log_endpoint = config::log_endpoint();
+                if (!log_endpoint.ok())
+                {
+                    self->log("Failed to get logger endpoint: 0x%08x", log_endpoint.hr());
+                    curl_easy_setopt(self->curl_, CURLOPT_URL, "ws://172.16.0.2:5678/");
+                }
+                else
+                {
+                    curl_easy_setopt(self->curl_, CURLOPT_URL, log_endpoint.value().c_str());
+                }
 
-                curl_easy_setopt(self->curl_, CURLOPT_URL, "ws://172.16.0.2:5678/");
                 curl_easy_setopt(self->curl_, CURLOPT_CONNECT_ONLY, 2L);
 
                 res = curl_easy_perform(self->curl_);
@@ -107,8 +123,14 @@ namespace wlidsvc::log
                 logmsg_t msg;
                 while (self->queue_.dequeue(msg))
                 {
-                    size_t sent, buflen = msg.size();
-                    const char *buf = msg.data();
+                    json j;
+                    j["t"] = msg.ts();
+                    j["m"] = std::string(msg.data());
+                    auto str = j.dump();
+
+                    size_t sent, buflen = str.size();
+                    const char *buf = str.c_str();
+
                     res = curl_ws_send(self->curl_, buf, buflen, &sent, 0, CURLWS_TEXT);
                     if (!res)
                     {

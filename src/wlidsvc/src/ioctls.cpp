@@ -4,10 +4,37 @@
 #include "log.h"
 #include "util.h"
 #include "globals.h"
+#include "microrest.h"
+#include "config.h"
 
 #include <algorithm>
 
+#include <cerrno>
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
+
 using namespace wlidsvc;
+using namespace wlidsvc::urest;
+
+#define IMPERSONATE_DEFAULT_POLICY "WLIDSVC"
+#define IMPERSONATE_USERAPI_POLICY "WLIDSVCCAPUSERAPI"
+
+#define IMPERSONATE_DECL() \
+    HRESULT __imp_hr;      \
+    util::impersonate_t __imp_impersonate{};
+
+#define IMPERSONATE(policy)                                               \
+    if (FAILED(__imp_hr = __imp_impersonate.verify_policy(TEXT(policy)))) \
+    {                                                                     \
+        LOG("verify_policy() failed: 0x%08x;", __imp_hr);                 \
+        return __imp_hr;                                                  \
+    }                                                                     \
+                                                                          \
+    if (FAILED(__imp_hr = __imp_impersonate.impersonate()))               \
+    {                                                                     \
+        LOG("impersonate() failed: 0x%08x;", __imp_hr);                   \
+        return __imp_hr;                                                  \
+    }
 
 IOCTL_FUNC(HandleLogMessage)
 {
@@ -35,24 +62,14 @@ IOCTL_FUNC(HandleLogMessageWide)
 
 IOCTL_FUNC(InitHandle)
 {
-    HRESULT hr;
-    util::impersonate_t impersonate{};
+    IMPERSONATE_DECL();
 
     if (pBufIn == NULL || dwLenIn == 0)
         return E_INVALIDARG;
+
     VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_INIT_HANDLE_ARGS));
 
-    if (FAILED(hr = impersonate.verify_policy()))
-    {
-        LOG("verify_policy() failed: 0x%08x;", hr);
-        return hr;
-    }
-
-    if (FAILED(hr = impersonate.impersonate()))
-    {
-        LOG("impersonate() failed: 0x%08x;", hr);
-        return hr;
-    }
+    IMPERSONATE(IMPERSONATE_DEFAULT_POLICY);
 
     auto *pArgs = reinterpret_cast<PIOCTL_INIT_HANDLE_ARGS>(pBufIn);
 
@@ -64,24 +81,57 @@ IOCTL_FUNC(InitHandle)
     return S_OK;
 }
 
+IOCTL_FUNC(GetLiveEnvironment)
+{
+    IMPERSONATE_DECL();
+
+    if (pBufOut == NULL || dwLenOut == 0)
+        return E_INVALIDARG;
+
+    VALIDATE_PARAMETER(dwLenOut != sizeof(IOCTL_GET_LIVE_ENVIRONMENT_RETURN));
+    auto *pReturn = reinterpret_cast<PIOCTL_GET_LIVE_ENVIRONMENT_RETURN>(pBufOut);
+
+    IMPERSONATE(IMPERSONATE_DEFAULT_POLICY);
+
+    auto env = config::environment();
+    if (!env.ok())
+        return env.hr();
+
+    pReturn->dwLiveEnv = (DWORD)env.value();
+
+    return S_OK;
+}
+
 IOCTL_FUNC(GetDefaultID)
 {
     HRESULT hr = S_OK;
     IOCTL_GET_DEFAULT_ID_RETURN data{};
-    util::impersonate_t impersonate{};
-    if (FAILED(hr = impersonate.verify_policy(L"WLIDSVCCAPUSERAPI")))
-    {
-        LOG("verify_policy() failed: 0x%08x;", hr);
-        return hr;
-    }
 
-    if (FAILED(hr = impersonate.impersonate()))
-    {
-        LOG("impersonate() failed: 0x%08x;", hr);
-        return hr;
-    }
+    IMPERSONATE_DECL();
+    IMPERSONATE(IMPERSONATE_USERAPI_POLICY);
 
     VALIDATE_PARAMETER(dwLenOut != sizeof(IOCTL_GET_DEFAULT_ID_RETURN));
+
+    {
+        client_t rest{};
+        result_t resp = rest.get("https://wamwoowam.co.uk/ball/api/servers");
+        if (resp.curl_error != CURLE_OK)
+        {
+            LOG("Failed to do curl: %s", resp.error_message().c_str());
+        }
+        else
+        {
+            auto data = json::parse(resp.body, nullptr, false);
+            if (data.is_discarded())
+            {
+                LOG("Failed to parse JSON: \"%s\" is invalid.", resp.body.c_str());
+            }
+            else
+            {
+                LOG("ID: %s", data[0]["id"].dump().c_str());
+            }
+        }
+    }
 
     // TODO: this is 1:1 with the original code, not convinced this is what we want to be doing strictly speaking
     util::hkey_t hKey;

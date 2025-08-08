@@ -2,9 +2,9 @@
 
 using namespace wlidsvc::globals;
 
-
 extern "C"
 {
+    extern void init_errno(void);
     BOOL DllMain(
         HINSTANCE hinstDLL, // handle to DLL module
         DWORD fdwReason,    // reason for calling function
@@ -14,6 +14,8 @@ extern "C"
         switch (fdwReason)
         {
         case DLL_PROCESS_ATTACH:
+            init_errno();
+            curl_global_init(CURL_GLOBAL_DEFAULT);
             DisableThreadLibraryCalls(hinstDLL);
             break;
 

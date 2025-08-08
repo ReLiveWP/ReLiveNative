@@ -29,12 +29,14 @@ static inline __time64_t filetime_to_time(const FILETIME &ft)
 
 static inline char *wchar_to_char(const wchar_t *fmt)
 {
+    // codecvt bloats the binary size by i shit you not over 500kb
     size_t length = ::wcslen(fmt);
     int dwLength = WideCharToMultiByte(CP_UTF8, 0, fmt, length, NULL, 0, NULL, NULL);
 
     char *tmp = new (std::nothrow) char[dwLength + 1];
     if (tmp == nullptr)
         return nullptr;
+        
     WideCharToMultiByte(CP_UTF8, 0, fmt, length, tmp, dwLength, NULL, NULL);
     tmp[dwLength] = '\0';
 

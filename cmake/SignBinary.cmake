@@ -20,7 +20,7 @@ function(sign_target target_name executable_suffix)
     set(sha1_signed "${target_path}_sha1${executable_suffix}")
     set(final_signed "${target_path}_signed${executable_suffix}")
 
-    set(cert_path "${CMAKE_SOURCE_DIR}/certs/codesign.pfx")
+    set(cert_path "${CMAKE_SOURCE_DIR}/certs/codesign_priv.pfx")
     set(cert_pass "$ENV{CERT_PASSWORD}")
     set(timestamp_url "http://timestamp.digicert.com")
 

@@ -9,7 +9,7 @@
         if (g_hDriver)                                                                                                                \
         {                                                                                                                             \
             WCHAR data[512];                                                                                                          \
-            ::wsprintfW(data, L"ORIGINAL: "                                                                                           \
+            ::wsprintfW(data, L"PATCHED2: "                                                                                           \
                               L"%s",                                                                                                  \
                         msg);                                                                                                         \
             ::DeviceIoControl(msidcrl::globals::g_hDriver, IOCTL_WLIDSVC_LOG_MESSAGE_WIDE, (LPVOID *)data, 512, NULL, 0, NULL, NULL); \
@@ -24,7 +24,7 @@
         if (g_hDriver)                                                                                                      \
         {                                                                                                                   \
             WCHAR data[512];                                                                                                \
-            ::wsprintfW(data, L"ORIGINAL: " fmt, __VA_ARGS__);                                                              \
+            ::wsprintfW(data, L"PATCHED2: " fmt, __VA_ARGS__);                                                              \
             ::DeviceIoControl(msidcrl::globals::g_hDriver, IOCTL_WLIDSVC_LOG_MESSAGE_WIDE, data, 512, NULL, 0, NULL, NULL); \
         }                                                                                                                   \
         ::LeaveCriticalSection(&msidcrl::globals::g_hDriverCrtiSec);                                                        \

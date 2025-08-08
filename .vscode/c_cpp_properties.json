@@ -1,9 +1,10 @@
 {
     "configurations": [
         {
-            "name": "Linux",
+            "name": "Windows CE",
             "includePath": [
                 "${workspaceFolder}/**",
+                "${workspaceFolder}/build/_deps/json-src/include",
                 "/opt/cegcc/arm-mingw32ce/include",
                 "/opt/cegcc/lib/gcc/arm-mingw32ce/9.3.0/include"
             ],
@@ -11,7 +12,8 @@
                 "UNDER_CE",
                 "_UNICODE",
                 "_WIN32_WCE=1",
-                "__GNUC__"
+                "__GNUC__",
+                "__COREDLL__"
             ],
             "compilerPath": "/opt/cegcc/bin/arm-mingw32ce-gcc",
             "cStandard": "c11",

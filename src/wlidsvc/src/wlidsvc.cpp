@@ -60,7 +60,7 @@ extern "C"
 					   DWORD dwLenIn, PBYTE pBufOut, DWORD dwLenOut,
 					   PDWORD pdwActualOut)
 	{
-		//LOG("WLI_IOControl %08x got IOCTL %04x", hContext, dwCode);
+		// LOG("WLI_IOControl %08x got IOCTL %04x", hContext, dwCode);
 
 		BEGIN_IOCTL_MAP()
 		IOCTL_HANDLER(IOCTL_WLIDSVC_LOG_MESSAGE, WLI_HandleLogMessage)
@@ -69,6 +69,7 @@ extern "C"
 		IOCTL_HANDLER(IOCTL_WLIDSVC_GET_DEFAULT_ID, WLI_GetDefaultID);
 		IOCTL_HANDLER(IOCTL_WLIDSVC_CREATE_IDENTITY_HANDLE, WLI_CreateIdentityHandle);
 		IOCTL_HANDLER(IOCTL_WLIDSVC_CLOSE_IDENTITY_HANDLE, WLI_CloseIdentityHandle);
+		IOCTL_HANDLER(IOCTL_WLIDSVC_GET_LIVE_ENVIRONMENT, WLI_GetLiveEnvironment);
 		END_IOCTL_MAP()
 		return FALSE;
 	}

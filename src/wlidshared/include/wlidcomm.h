@@ -49,8 +49,8 @@
     switch (dwCode)       \
     {
 
-#define IOCTL_HANDLER(code, handler)                   \
-    case code:                                         \
+#define IOCTL_HANDLER(code, handler)          \
+    case code:                                \
         LOG("IOCTL: %s", STRINGIZE(handler)); \
         return handler((wlidsvc::handle_ctx_t *)hContext, pBufIn, dwLenIn, pBufOut, dwLenOut, pdwActualOut);
 
@@ -100,5 +100,11 @@ typedef struct
 } IOCTL_CLOSE_IDENTITY_HANDLE_ARGS, *PIOCTL_CLOSE_IDENTITY_HANDLE_ARGS;
 
 #define IOCTL_WLIDSVC_CLOSE_IDENTITY_HANDLE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x805, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+typedef struct
+{
+    DWORD dwLiveEnv;
+} IOCTL_GET_LIVE_ENVIRONMENT_RETURN, *PIOCTL_GET_LIVE_ENVIRONMENT_RETURN;
+#define IOCTL_WLIDSVC_GET_LIVE_ENVIRONMENT CTL_CODE(FILE_DEVICE_UNKNOWN, 0x806, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #pragma pack(pop)

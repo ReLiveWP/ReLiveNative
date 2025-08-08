@@ -4,6 +4,8 @@ add_library(wlidshared STATIC
     src/wlidshared.c
     src/nanoprintf.c
     src/gthr-win32.c
+    src/strtoull.c
+    src/strtoll.c
 )
 
 target_include_directories(wlidshared PUBLIC

@@ -1,3 +1,3 @@
-build/**
-build_win32/**
-certs/**
+build
+build_win32
+certs/*.pfx

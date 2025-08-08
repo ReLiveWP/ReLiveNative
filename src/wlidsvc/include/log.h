@@ -7,6 +7,11 @@
 #include <windows.h>
 #include <cstring>
 
+#ifndef STRINGIZE
+#define STRINGIZE(x) STRINGIZE2(x)
+#define STRINGIZE2(x) #x
+#endif
+
 #define LINE_STRING STRINGIZE(__LINE__)
 #define LOG(fmt, ...) wlidsvc::log::info().log(__FILE__ ":" LINE_STRING " " fmt, __VA_ARGS__)
 #define LOG_WIDE(fmt, ...) wlidsvc::log::info().log(TEXT(__FILE__) L":" TEXT(LINE_STRING) L" " fmt, __VA_ARGS__)

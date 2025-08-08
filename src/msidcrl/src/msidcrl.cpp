@@ -9,20 +9,18 @@ extern "C"
 {
     HRESULT Initialize(GUID *lpGuid, DWORD dwVersionMajor, DWORD dwVersionMinor)
     {
-        WCHAR data[512] = {0};
         IOCTL_INIT_HANDLE_ARGS args = {};
         HANDLE hEvent, hDriver;
+        HRESULT hr = S_OK;
 
         if (g_hDriver != NULL)
             return S_OK;
 
+        args.dwApiLevel = WLIDSVC_API_LEVEL;
         args.dwMajorVersion = dwVersionMajor;
         args.dwMinorVersion = dwVersionMinor;
         GetModuleFileName(NULL, args.szExecutable, MAX_PATH);
         memcpy(&args.gApp, lpGuid, sizeof(GUID));
-
-        wsprintfW(data, TEXT("Initialize: lpszExecutable=%s; dwVersionMajor=%d; dwVersionMinor=%d;"),
-                  args.szExecutable, dwVersionMajor, dwVersionMinor);
 
         // unlike the original WLIDSVC, we need our driver handle at all times
         hDriver = CreateFile(WLIDSVC_FILE, 0, 0, NULL, OPEN_EXISTING, 0, NULL);
@@ -47,8 +45,8 @@ extern "C"
             hEvent = 0;
         }
 
-        DeviceIoControl(hDriver, IOCTL_WLIDSVC_INIT_HANDLE, &args, sizeof(IOCTL_INIT_HANDLE_ARGS), NULL, 0, NULL, NULL);
-        DeviceIoControl(hDriver, IOCTL_WLIDSVC_LOG_MESSAGE_WIDE, data, 512, NULL, 0, NULL, NULL);
+        if (FAILED(hr = DeviceIoControl(hDriver, IOCTL_WLIDSVC_INIT_HANDLE, &args, sizeof(IOCTL_INIT_HANDLE_ARGS), NULL, 0, NULL, NULL)))
+            return hr;
 
         return S_OK;
 
@@ -362,7 +360,13 @@ extern "C"
 
         // *szDefaultID = nullptr;
         HRESULT hr = S_OK;
-        if (FAILED(hr = (HRESULT)DeviceIoControl(g_hDriver, IOCTL_WLIDSVC_GET_DEFAULT_ID, NULL, 0, &sData, sizeof(IOCTL_GET_DEFAULT_ID_RETURN), NULL, NULL)))
+        if (FAILED(hr = (HRESULT)DeviceIoControl(g_hDriver,
+                                                 IOCTL_WLIDSVC_GET_DEFAULT_ID,
+                                                 NULL, 0,
+                                                 &sData, sizeof(IOCTL_GET_DEFAULT_ID_RETURN),
+                                                 NULL,
+                                                 NULL)) ||
+            hr == S_FALSE)
         {
             *szDefaultID = nullptr;
             return hr;
@@ -447,6 +451,26 @@ extern "C"
             return E_INVALIDARG;
         }
 
+        HRESULT hr = S_OK;
+        IOCTL_GET_IDENTITY_PROPERTY_BY_NAME_ARGS args{};
+        IOCTL_GET_IDENTITY_PROPERTY_BY_NAME_RETURN retVal{};
+
+        args.hIdentity = (DWORD_PTR)hIdentity;
+        if (szPropertyName != nullptr)
+            wcsncpy(args.szPropertyName, szPropertyName, 128);
+        else
+            memset(args.szPropertyName, 0, 128 * sizeof(WCHAR));
+
+        if (FAILED(hr = DeviceIoControl(g_hDriver,
+                                        IOCTL_WLIDSVC_GET_IDENTITY_PROPERTY_BY_NAME,
+                                        &args, sizeof(IOCTL_GET_IDENTITY_PROPERTY_BY_NAME_ARGS),
+                                        &retVal, sizeof(IOCTL_GET_IDENTITY_PROPERTY_BY_NAME_RETURN),
+                                        NULL, NULL)))
+            return hr;
+
+        // TODO: this
+        *szPropertyValue = nullptr;
+
         return E_NOTIMPL;
     }
 
@@ -467,8 +491,8 @@ extern "C"
                                         NULL, NULL)))
             return hr;
 
-        *pdwEnvironment = retVal.dwLiveEnv; 
-        
+        *pdwEnvironment = retVal.dwLiveEnv;
+
         return S_OK;
     }
 

@@ -3,7 +3,7 @@
 #include <vector>
 #include <curl/curl.h>
 
-namespace wlidsvc::urest
+namespace wlidsvc::net
 {
     struct result_t
     {
@@ -24,16 +24,15 @@ namespace wlidsvc::urest
     {
     public:
         client_t(CURL *curl = nullptr, std::vector<std::string> additionalHeaders = {})
-            : additional_headers(additionalHeaders)
+            : additional_headers(additionalHeaders), owns_curl(curl == nullptr)
         {
             this->curl = (curl != nullptr ? curl : curl_easy_init());
         }
 
         ~client_t()
         {
-            if (curl)
+            if (curl && owns_curl)
                 curl_easy_cleanup(curl);
-            curl_global_cleanup();
         }
 
         result_t get(const std::string &url, const std::vector<std::string> &customHeaders = {})
@@ -62,6 +61,7 @@ namespace wlidsvc::urest
 
     private:
         CURL *curl = nullptr;
+        bool owns_curl = true;
         std::string user_agent = "Mozilla/4.0 (compatible; MSIE 5.01; Windows CE) WLIDSVC/1.0, ReLiveWP/1.0 (+https://github.com/ReLiveWP/ReLiveWP)";
         std::vector<std::string> additional_headers = {};
 
@@ -106,7 +106,6 @@ namespace wlidsvc::urest
                 headersList = curl_slist_append(headersList, h.c_str());
             for (const auto &h : additional_headers)
                 headersList = curl_slist_append(headersList, h.c_str());
-
 
             if (headersList)
                 curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headersList);

@@ -14,3 +14,5 @@ IOCTL_FUNC(GetDefaultID);
 
 IOCTL_FUNC(CreateIdentityHandle);
 IOCTL_FUNC(CloseIdentityHandle);
+
+IOCTL_FUNC(GetIdentityPropertyByName);

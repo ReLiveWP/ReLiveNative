@@ -16,6 +16,8 @@ extern "C"
         case DLL_PROCESS_ATTACH:
             init_errno();
             curl_global_init(CURL_GLOBAL_DEFAULT);
+            InitializeCriticalSection(&g_wlidSvcReadyCritSect);
+            g_tlsIsImpersonatedIdx = TlsAlloc();
             DisableThreadLibraryCalls(hinstDLL);
             break;
 
@@ -33,6 +35,8 @@ extern "C"
             {
                 break; // do not do cleanup if process termination scenario
             }
+
+            curl_global_cleanup();
 
             // Perform any necessary cleanup.
             break;

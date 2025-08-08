@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <objbase.h>
 #include <wlidcomm.h>
 #include "ioctls.h"
 #include "log.h"
@@ -14,7 +15,7 @@
 using json = nlohmann::json;
 
 using namespace wlidsvc;
-using namespace wlidsvc::urest;
+using namespace wlidsvc::net;
 
 #define IMPERSONATE_DEFAULT_POLICY "WLIDSVC"
 #define IMPERSONATE_USERAPI_POLICY "WLIDSVCCAPUSERAPI"
@@ -41,7 +42,7 @@ IOCTL_FUNC(HandleLogMessage)
     if (pBufIn == NULL || dwLenIn == 0)
         return E_INVALIDARG;
 
-    LOG("[%08x] %s", hContext, pBufIn);
+    LOG("LOGMSG [0x%08x] %s", hContext, pBufIn);
 
     return S_OK;
 }
@@ -53,7 +54,7 @@ IOCTL_FUNC(HandleLogMessageWide)
 
     const char *tmp = wchar_to_char((const wchar_t *)pBufIn);
 
-    LOG_WIDE(L"[%08x] %s", hContext, tmp);
+    LOG_WIDE(L"LOGMSG [0x%08x] %s", hContext, tmp);
 
     delete[] tmp;
 
@@ -72,11 +73,29 @@ IOCTL_FUNC(InitHandle)
     IMPERSONATE(IMPERSONATE_DEFAULT_POLICY);
 
     auto *pArgs = reinterpret_cast<PIOCTL_INIT_HANDLE_ARGS>(pBufIn);
+    if (pArgs->dwApiLevel != WLIDSVC_API_LEVEL)
+    {
+        // binary mismatch between wlidsvc/msidcrl. should never happen.
+        LOG(L"[0x%08x] %s", hContext, "API version mismatch detected! This should never happen!!");
+        return E_UNEXPECTED;
+    }
 
     std::memcpy(&hContext->app, &pArgs->gApp, sizeof(GUID));
     hContext->major_version = pArgs->dwMajorVersion;
     hContext->minor_version = pArgs->dwMinorVersion;
     hContext->exec_path = {pArgs->szExecutable};
+
+    WCHAR lpGuid[40] = {0};
+    StringFromGUID2(pArgs->gApp, lpGuid, 40);
+
+    auto exec_path = util::wstring_to_utf8(hContext->exec_path);
+    auto guid = util::wstring_to_utf8(std::wstring(lpGuid));
+    LOG(L"[0x%08x] Initialized app %s, dwMajor: %d, dwMinor: %d, execPath: %s",
+        hContext,
+        guid.c_str(),
+        pArgs->dwMajorVersion,
+        pArgs->dwMinorVersion,
+        exec_path.c_str());
 
     return S_OK;
 }
@@ -94,10 +113,7 @@ IOCTL_FUNC(GetLiveEnvironment)
     IMPERSONATE(IMPERSONATE_DEFAULT_POLICY);
 
     auto env = config::environment();
-    if (!env.ok())
-        return env.hr();
-
-    pReturn->dwLiveEnv = (DWORD)env.value();
+    pReturn->dwLiveEnv = (DWORD)env;
 
     return S_OK;
 }
@@ -112,46 +128,13 @@ IOCTL_FUNC(GetDefaultID)
 
     VALIDATE_PARAMETER(dwLenOut != sizeof(IOCTL_GET_DEFAULT_ID_RETURN));
 
-    {
-        client_t rest{};
-        result_t resp = rest.get("https://wamwoowam.co.uk/ball/api/servers");
-        if (resp.curl_error != CURLE_OK)
-        {
-            LOG("Failed to do curl: %s", resp.error_message().c_str());
-        }
-        else
-        {
-            auto data = json::parse(resp.body, nullptr, false);
-            if (data.is_discarded())
-            {
-                LOG("Failed to parse JSON: \"%s\" is invalid.", resp.body.c_str());
-            }
-            else
-            {
-                LOG("ID: %s", data[0]["id"].dump().c_str());
-            }
-        }
-    }
+    auto default_id = config::default_id();
+    if (default_id.empty())
+        return S_FALSE;
 
-    // TODO: this is 1:1 with the original code, not convinced this is what we want to be doing strictly speaking
-    util::hkey_t hKey;
-    DWORD disposition;
-    LONG status = RegCreateKeyEx(HKEY_CURRENT_USER, TEXT("Software\\Microsoft\\IdentityCRL\\Environment\\Production"), 0, NULL, 0, 0x2001, NULL, hKey.put(), &disposition);
-    if (status != ERROR_SUCCESS)
-        return HRESULT_FROM_WIN32(status);
+    VALIDATE_PARAMETER(default_id.size() < 256);
 
-    DWORD dwLen;
-    status = RegQueryValueEx(hKey.get(), TEXT("DefaultID"), NULL, &disposition, NULL, &dwLen);
-    if (status != ERROR_SUCCESS)
-        return HRESULT_FROM_WIN32(status);
-
-    VALIDATE_PARAMETER(dwLen < 256);
-
-    status = RegQueryValueEx(hKey.get(), TEXT("DefaultID"), NULL, &disposition, (LPBYTE)data.szDefaultId, &dwLen);
-    if (status != ERROR_SUCCESS)
-        return HRESULT_FROM_WIN32(status);
-
-    data.szDefaultId[dwLen] = L'\0';
+    wcscpy(data.szDefaultId, default_id.c_str());
 
     std::memcpy(pBufOut, &data, sizeof(IOCTL_GET_DEFAULT_ID_RETURN));
     return hr;
@@ -166,12 +149,13 @@ IOCTL_FUNC(CreateIdentityHandle)
     auto *pArgs = reinterpret_cast<PIOCTL_CREATE_IDENTITY_HANDLE_ARGS>(pBufIn);
     auto *pReturn = reinterpret_cast<PIOCTL_CREATE_IDENTITY_HANDLE_RETURN>(pBufOut);
 
-    auto *identityCtx = new (std::nothrow) identity_ctx_t(pArgs->szMemberName, pArgs->dwIdentityFlags);
+    auto *identityCtx = new (std::nothrow) identity_ctx_t(hContext, pArgs->szMemberName, pArgs->dwIdentityFlags);
     if (identityCtx == nullptr)
         return E_OUTOFMEMORY;
 
-    pReturn->hIdentity = (DWORD_PTR)identityCtx;
     hContext->associated_identities.push_back(identityCtx);
+
+    pReturn->hIdentity = (DWORD_PTR)identityCtx;
 
     return hr;
 }
@@ -190,4 +174,26 @@ IOCTL_FUNC(CloseIdentityHandle)
     delete identity;
 
     return hr;
+}
+
+IOCTL_FUNC(GetIdentityPropertyByName)
+{
+    VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_GET_IDENTITY_PROPERTY_BY_NAME_ARGS));
+    VALIDATE_PARAMETER(dwLenOut != sizeof(IOCTL_GET_IDENTITY_PROPERTY_BY_NAME_RETURN));
+
+    auto *pArgs = reinterpret_cast<PIOCTL_GET_IDENTITY_PROPERTY_BY_NAME_ARGS>(pBufIn);
+    auto *pReturn = reinterpret_cast<PIOCTL_GET_IDENTITY_PROPERTY_BY_NAME_RETURN>(pBufOut);
+
+    auto *identityCtx = reinterpret_cast<identity_ctx_t *>(pArgs->hIdentity);
+    if (identityCtx == nullptr)
+        return E_INVALIDARG;
+
+    if (_wcsicmp(pArgs->szPropertyName, L"MemberName") == 0)
+    {
+        return PPCRL_E_NO_MEMBER_NAME_SET;
+    }
+    else
+    {
+        return E_NOTIMPL;
+    }
 }

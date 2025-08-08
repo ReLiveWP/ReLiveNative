@@ -5,14 +5,18 @@ add_library(wlidsvc SHARED
     src/globals.cpp
     src/log.cpp
     src/config.cpp
+    src/storage.cpp
     src/wlidsvc.cpp
     src/ioctls.cpp
+    src/update.cpp
 )
 
 target_link_libraries(wlidsvc PRIVATE 
     wlidshared 
+    "-lole32"
     "-latomic"
     "-lcurl"
+    "-lsqlite3"
     "-static-libstdc++"
 )
 

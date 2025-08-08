@@ -10,8 +10,9 @@
             ],
             "defines": [
                 "UNDER_CE",
+                "UNICODE",
                 "_UNICODE",
-                "_WIN32_WCE=1",
+                "_WIN32_WCE=0x700",
                 "__GNUC__",
                 "__COREDLL__"
             ],

@@ -91,17 +91,9 @@ namespace wlidsvc::log
                 self->curl_ = curl_easy_init();
                 if (!self->curl_)
                     break;
-                auto log_endpoint = config::log_endpoint();
-                if (!log_endpoint.ok())
-                {
-                    self->log("Failed to get logger endpoint: 0x%08x", log_endpoint.hr());
-                    curl_easy_setopt(self->curl_, CURLOPT_URL, "ws://172.16.0.2:5678/");
-                }
-                else
-                {
-                    curl_easy_setopt(self->curl_, CURLOPT_URL, log_endpoint.value().c_str());
-                }
 
+                auto log_endpoint = config::log_endpoint();
+                curl_easy_setopt(self->curl_, CURLOPT_URL, log_endpoint.c_str());
                 curl_easy_setopt(self->curl_, CURLOPT_CONNECT_ONLY, 2L);
 
                 res = curl_easy_perform(self->curl_);

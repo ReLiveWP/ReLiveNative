@@ -1,5 +1,8 @@
 #pragma once
+#include <string>
+
 #include "globals.h"
+
 #include <windows.h>
 #include "ceimp.h"
 
@@ -125,4 +128,27 @@ namespace wlidsvc::util
             TlsSetValue(globals::g_tlsIsImpersonatedIdx, (LPVOID)(--isThreadImpersonated));
         }
     };
+
+    static std::string wstring_to_utf8(const std::wstring &w)
+    {
+        if (w.empty())
+            return {};
+
+        DWORD dwLength = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), nullptr, 0, nullptr, nullptr);
+        std::string result(dwLength, 0);
+        WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), &result[0], dwLength, nullptr, nullptr);
+        return result;
+    }
+
+    static std::wstring utf8_to_wstring(const std::string &s)
+    {
+        if (s.empty())
+            return {};
+
+        int dwLength = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
+        std::wstring result(dwLength, 0);
+        MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), &result[0], dwLength);
+        return result;
+    }
+
 }

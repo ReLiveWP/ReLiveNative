@@ -55,10 +55,8 @@ namespace wlidsvc::log
         OutputDebugStringA("\n");
 #endif
 
-        logmsg_t msg_t(buffer);
-
         init();
-        queue_.enqueue(msg_t);
+        queue_.enqueue({buffer});
 
         delete[] buffer;
     }
@@ -80,8 +78,6 @@ namespace wlidsvc::log
 
         while (true)
         {
-            Sleep(5000);
-
             switch (self->state_)
             {
             case logger_thread_state_t::uninitialized:
@@ -140,10 +136,13 @@ namespace wlidsvc::log
                         break;
                     }
                 }
+
+                Sleep(5000);
                 break;
             }
             case logger_thread_state_t::cleanup:
             {
+                Sleep(5000);
                 self->log("Resetting logger...");
 
                 if (self->curl_ != NULL)

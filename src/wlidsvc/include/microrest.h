@@ -5,6 +5,8 @@
 
 namespace wlidsvc::net
 {
+    constexpr const char* g_userAgent = "Mozilla/4.0 (compatible; MSIE 5.01; Windows CE) WLIDSVC/1.0, ReLiveWP/1.0 (+https://github.com/ReLiveWP/ReLiveWP)";
+
     struct result_t
     {
         CURLcode curl_error = CURLE_OK;
@@ -62,7 +64,7 @@ namespace wlidsvc::net
     private:
         CURL *curl = nullptr;
         bool owns_curl = true;
-        std::string user_agent = "Mozilla/4.0 (compatible; MSIE 5.01; Windows CE) WLIDSVC/1.0, ReLiveWP/1.0 (+https://github.com/ReLiveWP/ReLiveWP)";
+        std::string user_agent = g_userAgent;
         std::vector<std::string> additional_headers = {};
 
         static size_t OnWrite(void *contents, size_t size, size_t nmemb, result_t *result)

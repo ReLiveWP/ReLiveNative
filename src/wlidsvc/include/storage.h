@@ -9,15 +9,17 @@
 namespace wlidsvc::storage
 {
     constexpr int CURRENT_SCHEMA_VERSION = 1;
-    
+
     class config_store_t
     {
     public:
-        config_store_t(sqlite3 *db) : owns_db(false), db(db)
+        config_store_t(sqlite3 *db)
+            : owns_db(false), db(db), is_readonly(false)
         {
         }
 
-        config_store_t(const std::wstring &path)
+        config_store_t(const std::wstring &path, bool is_readonly = false)
+            : owns_db(true), is_readonly(is_readonly)
         {
             std::string utf8path = wlidsvc::util::wstring_to_utf8(path);
             if (sqlite3_open(utf8path.c_str(), &db) != SQLITE_OK)
@@ -26,9 +28,11 @@ namespace wlidsvc::storage
                 std::terminate();
             }
 
+            if (is_readonly)
+                return;
+
             if (exec("CREATE TABLE IF NOT EXISTS wlid_config (key TEXT PRIMARY KEY, value TEXT);", nullptr) != SQLITE_OK)
             {
-                // ditto
                 LOG("Failed to create wlid_config table. %s", sqlite3_errmsg(db));
                 std::terminate();
             }
@@ -42,6 +46,12 @@ namespace wlidsvc::storage
 
         void set(const std::string &key, const std::string &value)
         {
+            if (is_readonly)
+            {
+                LOG("Attempted to set value in read-only config store: %s", key.c_str());
+                return;
+            }
+
             const char *sql =
                 "INSERT INTO wlid_config (key, value) VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value;";
@@ -84,6 +94,7 @@ namespace wlidsvc::storage
     private:
         sqlite3 *db = nullptr;
         bool owns_db = true;
+        bool is_readonly = false;
 
         int exec(const char *sql, char **errmsg)
         {

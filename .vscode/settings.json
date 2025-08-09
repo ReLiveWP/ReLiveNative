@@ -1,5 +1,6 @@
 {
     "files.associations": {
+        "*.provxml": "xml",
         "windows.h": "c",
         "wincon.h": "c",
         "stdarg.h": "c",
@@ -77,7 +78,8 @@
         "mutex": "cpp",
         "forward_list": "cpp",
         "valarray": "cpp",
-        "codecvt": "cpp"
+        "codecvt": "cpp",
+        "ctype.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled",
     "C_Cpp.default.compilerPath": "/opt/cegcc/bin/arm-mingw32ce-gcc"

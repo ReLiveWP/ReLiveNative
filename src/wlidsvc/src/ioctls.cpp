@@ -5,8 +5,10 @@
 #include "log.h"
 #include "util.h"
 #include "globals.h"
+#include "storage.h"
 #include "microrest.h"
 #include "config.h"
+#include "urls.h"
 
 #include <algorithm>
 
@@ -16,6 +18,8 @@ using json = nlohmann::json;
 
 using namespace wlidsvc;
 using namespace wlidsvc::net;
+using namespace wlidsvc::storage;
+using namespace wlidsvc::config;
 
 #define IMPERSONATE_DEFAULT_POLICY "WLIDSVC"
 #define IMPERSONATE_USERAPI_POLICY "WLIDSVCCAPUSERAPI"
@@ -376,6 +380,7 @@ IOCTL_FUNC(AuthIdentityToServiceEx)
 
 IOCTL_FUNC(LogonIdentityEx)
 {
+    HRESULT hr = S_OK;
     VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_LOGON_IDENTITY_EX_ARGS));
 
     auto *pArgs = reinterpret_cast<PIOCTL_LOGON_IDENTITY_EX_ARGS>(pBufIn);
@@ -386,6 +391,21 @@ IOCTL_FUNC(LogonIdentityEx)
     LOG("LogonIdentityEx called for identity %s with policy %s",
         util::wstring_to_utf8(identityCtx->member_name).c_str(),
         util::wstring_to_utf8(pArgs->szAuthPolicy).c_str());
+
+    // ensuring we have a client configuration, this will kickoff the download and wait for it to complete
+    if (FAILED(hr = config::init_client_config()))
+    {
+        LOG("Failed to initialize client configuration: 0x%08x", hr);
+        return hr;
+    }
+
+    config_store_t cs{config::client_config_db_path()};
+    auto rst_endpoint = cs.get(g_endpointRequestSecurityTokens);
+    if (rst_endpoint.empty())
+    {
+        LOG("%s", "RST endpoint is not configured, this should never happen!!");
+        return E_UNEXPECTED;
+    }
 
     auto auth_policy = util::wstring_to_utf8(pArgs->szAuthPolicy);
     if (auth_policy.empty())
@@ -409,7 +429,6 @@ IOCTL_FUNC(LogonIdentityEx)
         {"service_policy", auth_policy},
     });
 
-    HRESULT hr = S_OK;
     LPBYTE pBuffer = nullptr;
     RSTParams *pParams = nullptr;
     if (FAILED(hr = DeserializeRSTParams(pArgs->gMapParams, &pBuffer, &pParams)))
@@ -437,7 +456,7 @@ IOCTL_FUNC(LogonIdentityEx)
     LOG("LogonIdentityEx data: %s", data.c_str());
 
     net::client_t client{};
-    net::result_t result = client.post("http://172.16.0.2:5000/auth/request_token", data, "application/json");
+    net::result_t result = client.post(rst_endpoint, data, "application/json");
 
     delete[] pBuffer;
     return hr;

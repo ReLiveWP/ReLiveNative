@@ -63,7 +63,9 @@ that the converted value is unsigned.
 extern int errno;
 #endif
 
-#ifdef HAVE_LONG_LONG
+#include <ctype.h>
+
+#if 1
 
 __extension__
 typedef unsigned long long ullong_type;
@@ -109,7 +111,7 @@ strtoll(const char *nptr, char **endptr, register int base)
 	 */
 	do {
 		c = *s++;
-	} while (ISSPACE(c));
+	} while (isspace(c));
 	if (c == '-') {
 		neg = 1;
 		c = *s++;
@@ -145,10 +147,10 @@ strtoll(const char *nptr, char **endptr, register int base)
 	cutlim = cutoff % (ullong_type)base;
 	cutoff /= (ullong_type)base;
 	for (acc = 0, any = 0;; c = *s++) {
-		if (ISDIGIT(c))
+		if (isdigit(c))
 			c -= '0';
-		else if (ISALPHA(c))
-			c -= ISUPPER(c) ? 'A' - 10 : 'a' - 10;
+		else if (isalpha(c))
+			c -= isupper(c) ? 'A' - 10 : 'a' - 10;
 		else
 			break;
 		if (c >= base)

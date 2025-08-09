@@ -6,7 +6,7 @@ Included is all required source code and toolchain files, but no signing certifi
 
 Currently, the project expects a non-password protected PKCS#12 certificate chain named `certs/codesign.pfx`.
 
-This project heavily depends on cegcc and CMake. cegcc must be patched to disable position independent code, these patches are not yet included here but will be shortly.
+This project heavily depends on cegcc and CMake. cegcc must be patched to disable position independent code, these patches are [available here.](https://github.com/ReLiveWP/cegcc-build)
 
 Other patches for dependencies such as curl, zlib, mbedtls, etc. are available in the `patches/` directory. Once these are built and installed, you can then run
 

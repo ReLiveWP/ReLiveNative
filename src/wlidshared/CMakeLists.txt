@@ -6,6 +6,7 @@ add_library(wlidshared STATIC
     src/gthr-win32.c
     src/strtoull.c
     src/strtoll.c
+    src/stack.c
 )
 
 target_include_directories(wlidshared PUBLIC

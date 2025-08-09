@@ -69,7 +69,6 @@ extern "C"
 
         GUID guid = {0};
         CoCreateGuid(&guid);
-
         WCHAR szGuid[40] = {0};
         StringFromGUID2(guid, szGuid, 40);
         HANDLE hMap = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, cbSize, szGuid);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "util.h"
+#include "log.h"
 
 #include <string>
 #include <sqlite3.h>
@@ -21,14 +22,15 @@ namespace wlidsvc::storage
             std::string utf8path = wlidsvc::util::wstring_to_utf8(path);
             if (sqlite3_open(utf8path.c_str(), &db) != SQLITE_OK)
             {
-                // no exceptions but this will terminate which realistically is the best option here
-                throw std::runtime_error(sqlite3_errmsg(db));
+                LOG("Failed to open DB at %s", utf8path.c_str());
+                std::terminate();
             }
 
             if (exec("CREATE TABLE IF NOT EXISTS wlid_config (key TEXT PRIMARY KEY, value TEXT);", nullptr) != SQLITE_OK)
             {
                 // ditto
-                throw std::runtime_error(sqlite3_errmsg(db));
+                LOG("Failed to create wlid_config table. %s", sqlite3_errmsg(db));
+                std::terminate();
             }
         }
 

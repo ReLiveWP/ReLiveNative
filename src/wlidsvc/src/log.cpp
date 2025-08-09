@@ -1,7 +1,9 @@
 #include "log.h"
 #include "util.h"
 #include "config.h"
-#include "nanoprintf.h"
+
+#include <nanoprintf.h>
+#include <curl/curl.h>
 
 #include <string>
 

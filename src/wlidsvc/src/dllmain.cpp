@@ -1,4 +1,5 @@
 #include "globals.h"
+#include <curl/curl.h>
 
 using namespace wlidsvc::globals;
 

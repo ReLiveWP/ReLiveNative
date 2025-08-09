@@ -1,40 +1,36 @@
 #pragma once
+#include <windows.h>
 #include <string>
-#include <string_view>
+#include <map>
 #include <vector>
-#include <curl/curl.h>
-#include <sqlite3.h>
+
+struct sqlite3;
+typedef void CURLM;
 
 namespace wlidsvc
 {
     struct handle_ctx_t;
+    struct identity_ctx_t;
+
+    struct wcase_insensitive_t : public std::binary_function<std::wstring, std::wstring, bool>
+    {
+        bool operator()(const std::wstring &lhs, const std::wstring &rhs) const
+        {
+            return CompareStringW(LOCALE_USER_DEFAULT, NORM_IGNORECASE, lhs.c_str(), -1, rhs.c_str(), -1) == CSTR_EQUAL;
+        }
+    };
 
     struct identity_ctx_t
     {
-        inline identity_ctx_t(handle_ctx_t *lpHandleCtx, LPWSTR szMemberName, DWORD dwFlags)
-            : handle_ctx(lpHandleCtx), member_name(szMemberName), flags(dwFlags), curl_multi(nullptr), sqlite(nullptr)
-        {
-            curl_multi = curl_multi_init();
-        }
-
-        inline ~identity_ctx_t()
-        {
-            if (curl_multi != nullptr)
-            {
-                curl_multi_cleanup(curl_multi);
-                curl_multi = nullptr;
-            }
-
-            if (sqlite != nullptr)
-            {
-                sqlite3_close(sqlite);
-                sqlite = nullptr;
-            }
-        }
+        identity_ctx_t(handle_ctx_t *lpHandleCtx, LPWSTR szMemberName, DWORD dwFlags);
+        ~identity_ctx_t();
 
         handle_ctx_t *handle_ctx;
         std::wstring member_name;
         DWORD flags;
+
+        std::map<std::wstring, std::wstring> properties;
+        std::map<std::wstring, std::wstring> credentials;
 
         CURLM *curl_multi;
         sqlite3 *sqlite;
@@ -42,17 +38,8 @@ namespace wlidsvc
 
     struct handle_ctx_t
     {
-        inline handle_ctx_t(DWORD _hThis) : hThis(_hThis)
-        {
-        }
-
-        inline ~handle_ctx_t()
-        {
-            for (auto identity : associated_identities)
-            {
-                delete identity;
-            }
-        }
+        handle_ctx_t(DWORD _hThis);
+        ~handle_ctx_t();
 
         DWORD hThis;
         GUID app;

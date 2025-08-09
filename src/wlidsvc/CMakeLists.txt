@@ -9,6 +9,7 @@ add_library(wlidsvc SHARED
     src/wlidsvc.cpp
     src/ioctls.cpp
     src/update.cpp
+    src/types.cpp
 )
 
 target_link_libraries(wlidsvc PRIVATE 

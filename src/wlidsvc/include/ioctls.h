@@ -16,3 +16,9 @@ IOCTL_FUNC(CreateIdentityHandle);
 IOCTL_FUNC(CloseIdentityHandle);
 
 IOCTL_FUNC(GetIdentityPropertyByName);
+
+IOCTL_FUNC(SetCredential);
+IOCTL_FUNC(GetAuthStateEx);
+
+IOCTL_FUNC(AuthIdentityToServiceEx);
+IOCTL_FUNC(LogonIdentityEx);

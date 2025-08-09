@@ -5,9 +5,10 @@ add_library(msidcrl SHARED
     src/globals.cpp
     src/msidcrl.cpp
     src/test.cpp
+    src/util.cpp
 )
 
-target_link_libraries(msidcrl PRIVATE wlidshared)
+target_link_libraries(msidcrl PRIVATE wlidshared ole32)
 target_link_options(msidcrl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/msidcrl.def)
 target_include_directories(msidcrl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 

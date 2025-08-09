@@ -37,6 +37,84 @@ using namespace wlidsvc::net;
         return __imp_hr;                                                  \
     }
 
+#define PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL 0x8004882e
+
+HRESULT DeserializeRSTParams(GUID gMapParams, LPBYTE *ppBuffer, RSTParams **ppParams)
+{
+    if (ppBuffer == nullptr || ppParams == nullptr)
+    {
+        LOG("%s", "Invalid arguments: ppBuffer or ppParams is NULL");
+        return E_INVALIDARG;
+    }
+
+    *ppBuffer = nullptr;
+    *ppParams = nullptr;
+
+    if (IsEqualGUID(gMapParams, GUID{0}))
+    {
+        LOG("%s", "GUID is empty, no parameters to deserialize.");
+        return S_FALSE;
+    }
+
+    WCHAR szGuid[40] = {0};
+    StringFromGUID2(gMapParams, szGuid, 40);
+
+    HANDLE hMap = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, 0, szGuid);
+    if (hMap == NULL)
+    {
+        LOG("OpenFileMapping failed: %d", GetLastError());
+        return HRESULT_FROM_WIN32(GetLastError());
+    }
+
+    BYTE *pMapView = (BYTE *)MapViewOfFile(hMap, FILE_MAP_READ, 0, 0, 0);
+    if (pMapView == NULL)
+    {
+        CloseHandle(hMap);
+        LOG("MapViewOfFile failed: %d", GetLastError());
+        return HRESULT_FROM_WIN32(GetLastError());
+    }
+
+    DWORD cbSize = *(DWORD *)pMapView;
+    BYTE *pBuffer = new (std::nothrow) BYTE[cbSize];
+    if (pBuffer == NULL)
+    {
+        UnmapViewOfFile(pMapView);
+        CloseHandle(hMap);
+        return E_OUTOFMEMORY;
+    }
+
+    std::memcpy(pBuffer, pMapView, cbSize);
+    UnmapViewOfFile(pMapView);
+    CloseHandle(hMap);
+
+    // first 4 bytes are the total size, next 4 bytes are the parameter count
+    HRESULT hr = E_NOTIMPL;
+    DWORD dwParamCount = *(DWORD *)(pBuffer + 4);
+    RSTParams *pParams = reinterpret_cast<RSTParams *>(pBuffer + 8);
+    for (int i = 0; i < dwParamCount; ++i)
+    {
+        // fixup the pointers in the RSTParams structure
+        RSTParams *pParam = &pParams[i];
+        if (pParam->szServiceTarget != nullptr)
+            pParam->szServiceTarget = reinterpret_cast<LPWSTR>((DWORD_PTR)pBuffer + (DWORD_PTR)pParam->szServiceTarget);
+        if (pParam->szServicePolicy != nullptr)
+            pParam->szServicePolicy = reinterpret_cast<LPWSTR>((DWORD_PTR)pBuffer + (DWORD_PTR)pParam->szServicePolicy);
+
+        LOG("Param %d: ServiceTarget=%s, ServicePolicy=%s, TokenFlags=%d, TokenParam=%d",
+            i,
+            pParam->szServiceTarget ? util::wstring_to_utf8(pParam->szServiceTarget).c_str() : "NULL",
+            pParam->szServicePolicy ? util::wstring_to_utf8(pParam->szServicePolicy).c_str() : "NULL",
+            pParam->dwTokenFlags,
+            pParam->dwTokenParam);
+    }
+
+    *ppBuffer = pBuffer;
+    *ppParams = pParams;
+
+    LOG("Deserialized %d parameters from the buffer.", dwParamCount);
+    return S_OK;
+}
+
 IOCTL_FUNC(HandleLogMessage)
 {
     if (pBufIn == NULL || dwLenIn == 0)
@@ -188,12 +266,179 @@ IOCTL_FUNC(GetIdentityPropertyByName)
     if (identityCtx == nullptr)
         return E_INVALIDARG;
 
+    const auto &properties = identityCtx->properties;
+    const std::wstring propertyName(pArgs->szPropertyName);
+    auto it = properties.find(propertyName);
+    if (it != properties.end())
+    {
+        const auto &propertyValue = it->second;
+        if (propertyValue.size() >= 128)
+        {
+            LOG("Property value for '%s' is too long: %d characters, max is 127.",
+                util::wstring_to_utf8(propertyName).c_str(), propertyValue.size());
+            return E_INVALIDARG;
+        }
+
+        wcscpy(pReturn->szPropertyValue, propertyValue.c_str());
+        return S_OK;
+    }
+
     if (_wcsicmp(pArgs->szPropertyName, L"MemberName") == 0)
     {
-        return PPCRL_E_NO_MEMBER_NAME_SET;
+        // this seems wroooong? but it's expected by wlidux.dll#AsyncLogonIdentityExWithUI
+        if (identityCtx->member_name.empty())
+            return PPCRL_E_NO_MEMBER_NAME_SET;
+
+        if (identityCtx->member_name.size() >= 128)
+        {
+            LOG("MemberName is too long: %d characters, max is 127.", identityCtx->member_name.size());
+            return E_INVALIDARG;
+        }
+
+        wcscpy(pReturn->szPropertyValue, identityCtx->member_name.c_str());
+        return S_OK;
     }
     else
     {
-        return E_NOTIMPL;
+        return S_FALSE;
     }
+}
+
+IOCTL_FUNC(SetCredential)
+{
+    VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_SET_CREDENTIAL_ARGS));
+
+    auto *pArgs = reinterpret_cast<PIOCTL_SET_CREDENTIAL_ARGS>(pBufIn);
+    auto *identityCtx = reinterpret_cast<identity_ctx_t *>(pArgs->hIdentity);
+    if (identityCtx == nullptr)
+        return E_INVALIDARG;
+
+    auto credentialType = std::wstring(pArgs->szCredentialType);
+    auto credentialValue = std::wstring(pArgs->szCredential);
+
+    identityCtx->credentials[credentialType] = credentialValue;
+
+    LOG("SetCredential: hIdentity=%08hx; szCredentialType=%s; szCredential=%s;",
+        pArgs->hIdentity, util::wstring_to_utf8(credentialType).c_str(), util::wstring_to_utf8(credentialValue).c_str());
+
+    // dump the properties for debugging
+    LOG("Credentials for identity %s:", util::wstring_to_utf8(identityCtx->member_name).c_str());
+    for (const auto &prop : identityCtx->credentials)
+    {
+        LOG("  %s: %s", util::wstring_to_utf8(prop.first).c_str(),
+            util::wstring_to_utf8(prop.second).c_str());
+    }
+
+    return S_OK;
+}
+
+IOCTL_FUNC(GetAuthStateEx)
+{
+    VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_GET_AUTH_STATE_EX_ARGS));
+    VALIDATE_PARAMETER(dwLenOut != sizeof(IOCTL_GET_AUTH_STATE_EX_RETURN));
+
+    auto *pArgs = reinterpret_cast<PIOCTL_GET_AUTH_STATE_EX_ARGS>(pBufIn);
+    auto *pReturn = reinterpret_cast<PIOCTL_GET_AUTH_STATE_EX_RETURN>(pBufOut);
+
+    auto *identityCtx = reinterpret_cast<identity_ctx_t *>(pArgs->hIdentity);
+    if (identityCtx == nullptr)
+        return E_INVALIDARG;
+
+    pReturn->dwAuthState = 0;
+    pReturn->dwAuthRequired = 1;
+    pReturn->dwRequestStatus = S_OK;
+    wcscpy(pReturn->szWebFlowUrl, L"https://example.com/auth");
+
+    return S_OK;
+}
+
+IOCTL_FUNC(AuthIdentityToServiceEx)
+{
+    VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_AUTH_IDENTITY_TO_SERVICE_EX_ARGS));
+
+    auto *pArgs = reinterpret_cast<PIOCTL_AUTH_IDENTITY_TO_SERVICE_EX_ARGS>(pBufIn);
+    auto *identityCtx = reinterpret_cast<identity_ctx_t *>(pArgs->hIdentity);
+    if (identityCtx == nullptr)
+        return E_INVALIDARG;
+
+    HRESULT hr = S_OK;
+    LPBYTE pBuffer = nullptr;
+    RSTParams *pParams = nullptr;
+    if (FAILED(hr = DeserializeRSTParams(pArgs->gMapParams, &pBuffer, &pParams)))
+    {
+        LOG("DeserializeRSTParams failed: 0x%08x", hr);
+        return hr;
+    }
+
+    delete[] pBuffer;
+    return E_NOTIMPL;
+}
+
+IOCTL_FUNC(LogonIdentityEx)
+{
+    VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_LOGON_IDENTITY_EX_ARGS));
+
+    auto *pArgs = reinterpret_cast<PIOCTL_LOGON_IDENTITY_EX_ARGS>(pBufIn);
+    auto *identityCtx = reinterpret_cast<identity_ctx_t *>(pArgs->hIdentity);
+    if (identityCtx == nullptr)
+        return E_INVALIDARG;
+
+    LOG("LogonIdentityEx called for identity %s with policy %s",
+        util::wstring_to_utf8(identityCtx->member_name).c_str(),
+        util::wstring_to_utf8(pArgs->szAuthPolicy).c_str());
+
+    auto auth_policy = util::wstring_to_utf8(pArgs->szAuthPolicy);
+    if (auth_policy.empty())
+        auth_policy = "LEGACY";
+
+    json credentials = json::object();
+    for (auto &&credential : identityCtx->credentials)
+    {
+        credentials[util::wstring_to_utf8(credential.first)] = util::wstring_to_utf8(credential.second);
+    }
+
+    if (credentials.size() == 0)
+    {
+        LOG("No credentials set for identity %s", util::wstring_to_utf8(identityCtx->member_name).c_str());
+        return PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL;
+    }
+
+    json token_requests = json::array();
+    token_requests.push_back({
+        {"service_target", "http://Passport.NET/tb"},
+        {"service_policy", auth_policy},
+    });
+
+    HRESULT hr = S_OK;
+    LPBYTE pBuffer = nullptr;
+    RSTParams *pParams = nullptr;
+    if (FAILED(hr = DeserializeRSTParams(pArgs->gMapParams, &pBuffer, &pParams)))
+    {
+        LOG("DeserializeRSTParams failed: 0x%08x", hr);
+        return hr;
+    }
+
+    for (DWORD i = 0; i < pArgs->dwParamCount; ++i)
+    {
+        RSTParams *param = &pParams[i];
+        json token_request = {
+            {"service_target", util::wstring_to_utf8(param->szServiceTarget)},
+            {"service_policy", util::wstring_to_utf8(param->szServicePolicy)}};
+
+        token_requests.push_back(token_request);
+    }
+
+    json logon_data = {
+        {"identity", util::wstring_to_utf8(identityCtx->member_name)},
+        {"credentials", credentials},
+        {"token_requests", token_requests}};
+
+    std::string data = logon_data.dump();
+    LOG("LogonIdentityEx data: %s", data.c_str());
+
+    net::client_t client{};
+    net::result_t result = client.post("http://172.16.0.2:5000/auth/request_token", data, "application/json");
+
+    delete[] pBuffer;
+    return hr;
 }

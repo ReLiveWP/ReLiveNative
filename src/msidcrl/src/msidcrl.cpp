@@ -102,7 +102,31 @@ extern "C"
             TEXT("AuthIdentityToServiceEx: hIdentity=%08hx; serviceTokenFlags=%d; pParams=%08hx; dwParamCount=%d;"),
             hIdentity, serviceTokenFlags, pParams, dwParamCount);
 
-        return E_NOTIMPL;
+        if (hIdentity == nullptr || pParams == nullptr || dwParamCount == 0)
+        {
+            return E_INVALIDARG;
+        }
+
+        HRESULT hr;
+        GUID guid;
+        HANDLE hMap = NULL;
+        if (FAILED(hr = SerializeRSTParams(pParams, dwParamCount, &guid, &hMap)))
+            return hr;
+
+        IOCTL_AUTH_IDENTITY_TO_SERVICE_EX_ARGS args = {};
+        args.hIdentity = hIdentity->hIdentitySrv;
+        args.dwServiceTokenFlags = serviceTokenFlags;
+        args.gMapParams = guid;
+        args.dwParamCount = dwParamCount;
+
+        hr = DeviceIoControl(g_hDriver,
+                             IOCTL_WLIDSVC_AUTH_IDENTITY_TO_SERVICE_EX,
+                             &args, sizeof(IOCTL_AUTH_IDENTITY_TO_SERVICE_EX_ARGS),
+                             NULL, 0,
+                             NULL, NULL);
+
+        CloseHandle(hMap);
+        return hr;
     }
 
     HRESULT CheckPasswordStrength(IN LPCWSTR szPassword, OUT PPCRL_PASSWORD_STRENGTH *pStrength)
@@ -320,30 +344,67 @@ extern "C"
     {
         LOG_MESSAGE_FMT(TEXT("GetAuthState: hIdentity=%08hx;"), hIdentity);
 
+        return GetAuthStateEx(
+            hIdentity,
+            nullptr, // szServiceTarget
+            pdwAuthState,
+            pdwAuthRequired,
+            pdwRequestStatus,
+            szWebFlowUrl);
+    }
+
+    HRESULT GetAuthStateEx(
+        IN HIDENTITY hIdentity,
+        IN OPTIONAL LPCWSTR szServiceTarget,
+        OUT DWORD *pdwAuthState,
+        OUT DWORD *pdwAuthRequired,
+        OUT DWORD *pdwRequestStatus,
+        OUT LPWSTR *szWebFlowUrl)
+    {
+        LOG_MESSAGE_FMT(TEXT("GetAuthStateEx: hIdentity=%08hx; szServiceTarget=%s;"), hIdentity, LOG_STRING(szServiceTarget));
+
         if (hIdentity == nullptr || pdwAuthState == nullptr || pdwAuthRequired == nullptr ||
             pdwRequestStatus == nullptr || szWebFlowUrl == nullptr)
         {
             return E_INVALIDARG;
         }
 
-        return E_NOTIMPL;
-    }
+        IOCTL_GET_AUTH_STATE_EX_ARGS args{};
+        IOCTL_GET_AUTH_STATE_EX_RETURN retVal{};
 
-    HRESULT GetAuthStateEx(
-        IN HIDENTITY hIdentity,
-        IN LPCWSTR szServiceTarget,
-        OUT DWORD *pdwAuthState,
-        OUT DWORD *pdwAuthRequired,
-        OUT DWORD *pdwRequestStatus,
-        OUT LPWSTR *szWebFlowUrl)
-    {
-        LOG_MESSAGE_FMT(TEXT("GetAuthState: hIdentity=%08hx; szServiceTarget=%s;"), hIdentity, LOG_STRING(szServiceTarget));
+        args.hIdentity = hIdentity->hIdentitySrv;
+        if (szServiceTarget != nullptr)
+            wcsncpy(args.szServiceTarget, szServiceTarget, 256);
+        else
+            memset(args.szServiceTarget, 0, 256 * sizeof(WCHAR));
 
-        if (hIdentity == nullptr || szServiceTarget == nullptr || pdwAuthState == nullptr ||
-            pdwAuthRequired == nullptr || pdwRequestStatus == nullptr || szWebFlowUrl == nullptr)
+        HRESULT hr = S_OK;
+        if (FAILED(hr = DeviceIoControl(g_hDriver,
+                                        IOCTL_WLIDSVC_GET_AUTH_STATE_EX,
+                                        &args, sizeof(IOCTL_GET_AUTH_STATE_EX_ARGS),
+                                        &retVal, sizeof(IOCTL_GET_AUTH_STATE_EX_RETURN),
+                                        NULL, NULL)))
+            return hr;
+
+        *pdwAuthState = retVal.dwAuthState;
+        *pdwAuthRequired = retVal.dwAuthRequired;
+        *pdwRequestStatus = retVal.dwRequestStatus;
+        if (retVal.szWebFlowUrl[0] != L'\0')
         {
-            return E_INVALIDARG;
+            size_t len = wcslen(retVal.szWebFlowUrl);
+            *szWebFlowUrl = (LPWSTR)malloc((len + 1) * sizeof(WCHAR));
+            if (*szWebFlowUrl == nullptr)
+                return E_OUTOFMEMORY;
+
+            wcsncpy(*szWebFlowUrl, retVal.szWebFlowUrl, len + 1);
+            (*szWebFlowUrl)[len] = L'\0';
         }
+        else
+        {
+            *szWebFlowUrl = nullptr;
+        }
+
+        return hr;
 
         return E_NOTIMPL;
     }
@@ -408,13 +469,12 @@ extern "C"
     }
 
     HRESULT GetExtendedProperty(
-        IN HIDENTITY hIdentity,
         IN LPCWSTR szPropertyName,
         OUT LPWSTR *szPropertyValue)
     {
-        LOG_MESSAGE_FMT(TEXT("GetExtendedProperty: hIdentity=%08hx; szPropertyName=%s;"), hIdentity, LOG_STRING(szPropertyName));
+        LOG_MESSAGE_FMT(TEXT("GetExtendedProperty: szPropertyName=%s;"), LOG_STRING(szPropertyName));
 
-        if (hIdentity == nullptr || szPropertyName == nullptr || szPropertyValue == nullptr)
+        if (szPropertyName == nullptr || szPropertyValue == nullptr)
         {
             return E_INVALIDARG;
         }
@@ -455,7 +515,7 @@ extern "C"
         IOCTL_GET_IDENTITY_PROPERTY_BY_NAME_ARGS args{};
         IOCTL_GET_IDENTITY_PROPERTY_BY_NAME_RETURN retVal{};
 
-        args.hIdentity = (DWORD_PTR)hIdentity;
+        args.hIdentity = hIdentity->hIdentitySrv;
         if (szPropertyName != nullptr)
             wcsncpy(args.szPropertyName, szPropertyName, 128);
         else
@@ -468,8 +528,19 @@ extern "C"
                                         NULL, NULL)))
             return hr;
 
-        // TODO: this
-        *szPropertyValue = nullptr;
+        auto len = wcslen(retVal.szPropertyValue);
+        if (len == 0)
+        {
+            *szPropertyValue = nullptr;
+            return S_FALSE;
+        }
+
+        *szPropertyValue = (LPWSTR)malloc((len + 1) * sizeof(WCHAR));
+        if (*szPropertyValue == nullptr)
+            return E_OUTOFMEMORY;
+
+        wcsncpy(*szPropertyValue, retVal.szPropertyValue, len + 1);
+        (*szPropertyValue)[len] = L'\0';
 
         return E_NOTIMPL;
     }
@@ -583,8 +654,8 @@ extern "C"
         IN HIDENTITY hIdentity,
         OPTIONAL IN LPCWSTR szAuthPolicy,
         IN DWORD dwAuthFlags,
-        IN RSTParams *pcRSTParams,
-        IN DWORD dwpcRSTParamsCount)
+        IN OPTIONAL RSTParams *pcRSTParams,
+        IN OPTIONAL DWORD dwpcRSTParamsCount)
     {
         LOG_MESSAGE_FMT(TEXT("LogonIdentityEx: hIdentity=%08hx; szAuthPolicy=%s; dwAuthFlags=%d, pcRSTParams=%08hx; dwpcRSTParamsCount=%d"),
                         hIdentity,
@@ -592,7 +663,38 @@ extern "C"
                         dwAuthFlags,
                         pcRSTParams,
                         dwpcRSTParamsCount);
-        return E_NOTIMPL;
+
+        if (hIdentity == nullptr)
+        {
+            return E_INVALIDARG;
+        }
+
+        IOCTL_LOGON_IDENTITY_EX_ARGS args{};
+        args.hIdentity = hIdentity->hIdentitySrv;
+        if (szAuthPolicy != nullptr)
+            wcsncpy(args.szAuthPolicy, szAuthPolicy, 256);
+        else
+            memset(args.szAuthPolicy, 0, 256 * sizeof(WCHAR));
+
+        args.dwAuthFlags = dwAuthFlags;
+        args.dwParamCount = dwpcRSTParamsCount;
+
+        HRESULT hr;
+        GUID guid;
+        HANDLE hMap = NULL;
+        if (FAILED(hr = SerializeRSTParams(pcRSTParams, dwpcRSTParamsCount, &guid, &hMap)))
+            return hr;
+
+        args.gMapParams = guid;
+
+        hr = DeviceIoControl(g_hDriver,
+                             IOCTL_WLIDSVC_LOGON_IDENTITY_EX,
+                             &args, sizeof(IOCTL_LOGON_IDENTITY_EX_ARGS),
+                             NULL, 0,
+                             NULL, NULL);
+
+        CloseHandle(hMap);
+        return hr;
     }
 
     HRESULT NextIdentity(IN HENUMIDENTITY hEnum, OUT LPWSTR *pwszMemberName)
@@ -623,7 +725,26 @@ extern "C"
     HRESULT SetCredential(IN HIDENTITY hIdentity, IN LPCWSTR szCredType, IN LPCWSTR szCredValue)
     {
         LOG_MESSAGE_FMT(TEXT("SetCredential: hIdentity=%08hx; szCredType=%s; szCredValue=%s;"), hIdentity, LOG_STRING(szCredType), LOG_STRING(szCredValue));
-        return E_NOTIMPL;
+
+        if (hIdentity == nullptr || szCredType == nullptr || szCredValue == nullptr)
+        {
+            return E_INVALIDARG;
+        }
+
+        IOCTL_SET_CREDENTIAL_ARGS args{};
+        args.hIdentity = hIdentity->hIdentitySrv;
+        wcsncpy(args.szCredentialType, szCredType, 64);
+        wcsncpy(args.szCredential, szCredValue, 256);
+
+        HRESULT hr = S_OK;
+        if (FAILED(hr = DeviceIoControl(g_hDriver,
+                                        IOCTL_WLIDSVC_SET_CREDENTIAL,
+                                        &args, sizeof(IOCTL_SET_CREDENTIAL_ARGS),
+                                        NULL, 0,
+                                        NULL, NULL)))
+            return hr;
+
+        return hr;
     }
 
     HRESULT SetExtendedProperty(IN LPCWSTR szPropertyName, IN LPCWSTR szPropertyValue)

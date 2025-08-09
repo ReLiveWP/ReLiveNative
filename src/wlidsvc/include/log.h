@@ -3,9 +3,10 @@
 #include <array>
 #include <atomic>
 #include <algorithm>
-#include <curl/curl.h>
 #include <windows.h>
 #include <cstring>
+
+typedef void CURL;
 
 #ifndef STRINGIZE
 #define STRINGIZE(x) STRINGIZE2(x)

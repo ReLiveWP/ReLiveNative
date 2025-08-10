@@ -455,7 +455,7 @@ HRESULT parse_logon_response(std::string &body)
     const auto &username = response["username"].get<std::string>();
 
     {
-        identity_store_t *identity_store = new identity_store_t{storage::db_path()};
+        identity_store_t identity_store{storage::db_path()};
 
         identity_t identity;
         identity.identity = username;
@@ -464,7 +464,7 @@ HRESULT parse_logon_response(std::string &body)
         identity.email = response["email_address"].get<std::string>();
         identity.display_name = username;
 
-        if (!identity_store->store(identity))
+        if (!identity_store.store(identity))
         {
             LOG("Failed to store identity: %s (PUID: %llu, CUID: %s, Email: %s)",
                 identity.identity.c_str(),
@@ -472,7 +472,6 @@ HRESULT parse_logon_response(std::string &body)
                 identity.cuid.c_str(),
                 identity.email.c_str());
 
-            delete identity_store;
             return E_FAIL;
         }
 
@@ -481,8 +480,6 @@ HRESULT parse_logon_response(std::string &body)
             identity.puid,
             identity.cuid.c_str(),
             identity.email.c_str());
-
-        delete identity_store;
     }
 
     {
@@ -492,7 +489,7 @@ HRESULT parse_logon_response(std::string &body)
             return S_OK; // no tokens to store, but not an error
         }
 
-        token_store_t *token_store = new token_store_t{storage::db_path()};
+        token_store_t token_store{storage::db_path()};
 
         const auto &tokens = response["security_tokens"];
         for (size_t i = 0; i < tokens.size(); i++)
@@ -507,7 +504,7 @@ HRESULT parse_logon_response(std::string &body)
             t.created = token["created"].get<std::string>();
             t.expires = token["expires"].get<std::string>();
 
-            if (!token_store->store(t))
+            if (!token_store.store(t))
             {
                 LOG("Failed to store token for %s: %s (Type: %s, Expires: %s)",
                     username.c_str(),
@@ -524,8 +521,6 @@ HRESULT parse_logon_response(std::string &body)
                 t.type.c_str(),
                 t.expires.c_str());
         }
-
-        delete token_store;
     }
 
     return S_OK;

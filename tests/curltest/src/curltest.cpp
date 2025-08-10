@@ -38,6 +38,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLin
     }
 
     curl_easy_setopt(curl, CURLOPT_URL, "https://wamwoowam.co.uk");
+    curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "ReLiveNative/1.0");
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);

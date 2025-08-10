@@ -9,6 +9,8 @@
 #include "globals.h"
 #include "update.h"
 
+#include <sqlite3.h>
+
 using namespace wlidsvc;
 using namespace wlidsvc::globals;
 using namespace wlidsvc::storage;

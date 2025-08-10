@@ -145,6 +145,7 @@ namespace wlidsvc::config
         SetEndOfFile(hFile); // ensure the file is empty before writing
 
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
         curl_easy_setopt(curl, CURLOPT_USERAGENT, net::g_userAgent);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, OnWriteFile);

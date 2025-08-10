@@ -12,6 +12,25 @@ namespace wlidsvc
     struct handle_ctx_t;
     struct identity_ctx_t;
 
+    struct identity_t
+    {
+        std::string identity;
+        uint64_t puid;
+        std::string cuid;
+        std::string email;
+        std::string display_name;
+    };
+
+    struct token_t
+    {
+        std::string identity;
+        std::string service;
+        std::string token;
+        std::string type; // "JWT", "X509v3", etc.
+        std::string expires; // ISO 8601 format
+        std::string created; // ISO 8601 format
+    };
+
     struct wcase_insensitive_t : public std::binary_function<std::wstring, std::wstring, bool>
     {
         bool operator()(const std::wstring &lhs, const std::wstring &rhs) const

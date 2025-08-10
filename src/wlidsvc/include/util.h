@@ -6,6 +6,9 @@
 #include <windows.h>
 #include "ceimp.h"
 
+#define FACILITY_CURL 83
+#define CURLE_TO_HRESULT(e) MAKE_HRESULT(1, FACILITY_CURL, e)
+
 namespace wlidsvc::util
 {
     class critsect_t

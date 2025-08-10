@@ -6,6 +6,9 @@ add_library(wlidsvc SHARED
     src/log.cpp
     src/config.cpp
     src/storage.cpp
+    src/storage/config_storage.cpp
+    src/storage/identity_storage.cpp
+    src/storage/token_storage.cpp
     src/wlidsvc.cpp
     src/ioctls.cpp
     src/update.cpp

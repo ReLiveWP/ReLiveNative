@@ -447,6 +447,8 @@ IOCTL_FUNC(LogonIdentityEx)
         token_requests.push_back(token_request);
     }
 
+    delete[] pBuffer;
+
     json logon_data = {
         {"identity", util::wstring_to_utf8(identityCtx->member_name)},
         {"credentials", credentials},
@@ -455,9 +457,77 @@ IOCTL_FUNC(LogonIdentityEx)
     std::string data = logon_data.dump();
     LOG("LogonIdentityEx data: %s", data.c_str());
 
+    // {
+    //   "puid": 12345,
+    //   "cid": "asdf",
+    //   "username": "asdf",
+    //   "email_address": "asdf@live.com",
+    //   "security_tokens": [
+    //     {
+    //       "service_target": "http://Passport.NET/tb",
+    //       "token": "snip",
+    //       "token_type": "JWT",
+    //       "created": "2025-08-10T15:42:46.0775874+01:00",
+    //       "expires": "2025-09-09T15:42:46.0775874+01:00"
+    //     }
+    //   ]
+    // }
+
     net::client_t client{};
     net::result_t result = client.post(rst_endpoint, data, "application/json");
+    if (result.curl_error != CURLE_OK)
+    {
+        return CURLE_TO_HRESULT(result.curl_error);
+    }
 
-    delete[] pBuffer;
+    auto response = json::parse(result.body, nullptr, false);
+    if (response.is_discarded())
+    {
+        return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+    }
+
+    const auto username = response["username"].get<std::string>();
+
+    {
+        identity_store_t identity_store{storage::db_path()};
+
+        identity_t identity;
+        identity.identity = username;
+        identity.puid = response["puid"].get<uint64_t>();
+        identity.cuid = response["cid"].get<std::string>();
+        identity.email = response["email_address"].get<std::string>();
+        identity.display_name = username;
+
+        identity_store.store(identity);
+        LOG("Stored identity: %s (PUID: %llu, CUID: %s, Email: %s)",
+            identity.identity.c_str(),
+            identity.puid,
+            identity.cuid.c_str(),
+            identity.email.c_str());
+    }
+
+    {
+        token_store_t token_store{storage::db_path()};
+
+        for (const auto &token : response["security_tokens"])
+        {
+            token_t t;
+            t.identity = username;
+            t.service = token["service_target"].get<std::string>();
+            t.token = token["token"].get<std::string>();
+            t.type = "JWT";
+            t.expires = token["expires"].get<std::string>();
+            t.created = token["created"].get<std::string>();
+
+            token_store.store(t);
+            LOG("Stored token for %s: %s (Type: %s, Expires: %s)",
+                username.c_str(),
+                t.service.c_str(),
+                t.type.c_str(),
+                t.expires.c_str());
+        }
+    }
+
+end:
     return hr;
 }

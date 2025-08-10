@@ -15,15 +15,11 @@ namespace wlidsvc::storage
         if (is_readonly)
             return;
 
-        // if (exec("CREATE TABLE IF NOT EXISTS wlid_config (key TEXT PRIMARY KEY, value TEXT);", nullptr) != SQLITE_OK)
-        // {
-        //     LOG("Failed to create wlid_config table. %s", sqlite3_errmsg(db));
-        //     std::terminate();
-        // }
-    }
-
-    config_store_t::~config_store_t()
-    {
+        util::critsect_t cs{&globals::g_dbCritSect};
+        if (exec(CREATE_CONFIG_STORE_SQL, nullptr) != SQLITE_OK)
+        {
+            LOG("Failed to create wlid_config table. %s", sqlite3_errmsg(db));
+        }
     }
 
     void config_store_t::set(const std::string &key, const std::string &value)
@@ -33,6 +29,8 @@ namespace wlidsvc::storage
             LOG("Attempted to set value in read-only config store: %s", key.c_str());
             return;
         }
+
+        util::critsect_t cs{&globals::g_dbCritSect};
 
         const char *sql =
             "INSERT INTO wlid_config (key, value) VALUES (?, ?) "

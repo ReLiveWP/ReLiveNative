@@ -12,16 +12,16 @@
 
 extern "C"
 {
-#if 0
-#define CeCreateToken(LPVOID pTok, DWORD dwFlags) (0)
-#define CeRevertToSelf(void) (TRUE)
-#define CeAccessCheck(LPVOID pSecDesc, HANDLE hTok, DWORD dwAccess) (TRUE)
-#define CePrivilegeCheck(HANDLE hTok, LPDWORD pPrivs, int nPrivs) (TRUE)
-#define CeImpersonateToken(HANDLE hTok) (TRUE)
-#define CeCreateTokenFromAccount(LPCWSTR pszAccountName) (0)
-#define CeImpersonateCurrentProcess(void) (TRUE)
-#define CeDuplicateToken(HANDLE hTok, DWORD dwFlags, PHANDLE phRet) (FALSE)
-#define CePolicyCheckWithContext(HANDLE hTok, LPCWSTR pszAccountName, DWORD dwUnk1, DWORD dwUnk2, DWORD dwFlags, DWORD dwUnk3, DWORD dwUnk4) (TRUE)
+#ifndef UNDER_CE
+    #define CeCreateToken(pTok, dwFlags) (0)
+    #define CeRevertToSelf(void) (TRUE)
+    #define CeAccessCheck(pSecDesc, hTok, dwAccess) (TRUE)
+    #define CePrivilegeCheck(hTok, pPrivs, nPrivs) (TRUE)
+    #define CeImpersonateToken(hTok) (TRUE)
+    #define CeCreateTokenFromAccount(pszAccountName) (0)
+    #define CeImpersonateCurrentProcess(void) (TRUE)
+    #define CeDuplicateToken(hTok, dwFlags, phRet) (FALSE)
+    #define CePolicyCheckWithContext(hTok, pszAccountName, dwUnk1, dwUnk2, dwFlags, dwUnk3, dwUnk4) (TRUE)
 #else
     HANDLE CeCreateToken(LPVOID pTok, DWORD dwFlags);
     BOOL CeRevertToSelf(void);

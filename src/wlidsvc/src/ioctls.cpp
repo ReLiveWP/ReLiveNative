@@ -43,7 +43,7 @@ using namespace wlidsvc::config;
 
 #define PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL 0x8004882e
 
-HRESULT DeserializeRSTParams(GUID gMapParams, LPBYTE *ppBuffer, RSTParams **ppParams)
+HRESULT DeserializeRSTParams(GUID gMapParams, DWORD dwSize, LPBYTE *ppBuffer, RSTParams **ppParams)
 {
     if (ppBuffer == nullptr || ppParams == nullptr)
     {
@@ -63,7 +63,7 @@ HRESULT DeserializeRSTParams(GUID gMapParams, LPBYTE *ppBuffer, RSTParams **ppPa
     WCHAR szGuid[40] = {0};
     StringFromGUID2(gMapParams, szGuid, 40);
 
-    HANDLE hMap = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, 0, szGuid);
+    HANDLE hMap = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, dwSize, szGuid);
     if (hMap == NULL)
     {
         LOG("OpenFileMapping failed: %d", GetLastError());
@@ -368,7 +368,7 @@ IOCTL_FUNC(AuthIdentityToServiceEx)
     HRESULT hr = S_OK;
     LPBYTE pBuffer = nullptr;
     RSTParams *pParams = nullptr;
-    if (FAILED(hr = DeserializeRSTParams(pArgs->gMapParams, &pBuffer, &pParams)))
+    if (FAILED(hr = DeserializeRSTParams(pArgs->gMapParams, pArgs->dwFileSize, &pBuffer, &pParams)))
     {
         LOG("DeserializeRSTParams failed: 0x%08x", hr);
         return hr;
@@ -378,39 +378,9 @@ IOCTL_FUNC(AuthIdentityToServiceEx)
     return E_NOTIMPL;
 }
 
-IOCTL_FUNC(LogonIdentityEx)
+HRESULT serialise_logon_request(identity_ctx_t *identityCtx, const std::string &auth_policy, const GUID &gMapParams, const DWORD dwFileSize, const DWORD dwParamCount, std::string &logon_data_str)
 {
-    HRESULT hr = S_OK;
-    VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_LOGON_IDENTITY_EX_ARGS));
-
-    auto *pArgs = reinterpret_cast<PIOCTL_LOGON_IDENTITY_EX_ARGS>(pBufIn);
-    auto *identityCtx = reinterpret_cast<identity_ctx_t *>(pArgs->hIdentity);
-    if (identityCtx == nullptr)
-        return E_INVALIDARG;
-
-    LOG("LogonIdentityEx called for identity %s with policy %s",
-        util::wstring_to_utf8(identityCtx->member_name).c_str(),
-        util::wstring_to_utf8(pArgs->szAuthPolicy).c_str());
-
-    // ensuring we have a client configuration, this will kickoff the download and wait for it to complete
-    if (FAILED(hr = config::init_client_config()))
-    {
-        LOG("Failed to initialize client configuration: 0x%08x", hr);
-        return hr;
-    }
-
-    config_store_t cs{config::client_config_db_path()};
-    auto rst_endpoint = cs.get(g_endpointRequestSecurityTokens);
-    if (rst_endpoint.empty())
-    {
-        LOG("%s", "RST endpoint is not configured, this should never happen!!");
-        return E_UNEXPECTED;
-    }
-
-    auto auth_policy = util::wstring_to_utf8(pArgs->szAuthPolicy);
-    if (auth_policy.empty())
-        auth_policy = "LEGACY";
-
+    HRESULT hr;
     json credentials = json::object();
     for (auto &&credential : identityCtx->credentials)
     {
@@ -431,13 +401,13 @@ IOCTL_FUNC(LogonIdentityEx)
 
     LPBYTE pBuffer = nullptr;
     RSTParams *pParams = nullptr;
-    if (FAILED(hr = DeserializeRSTParams(pArgs->gMapParams, &pBuffer, &pParams)))
+    if (FAILED(hr = DeserializeRSTParams(gMapParams, dwFileSize, &pBuffer, &pParams)))
     {
         LOG("DeserializeRSTParams failed: 0x%08x", hr);
         return hr;
     }
 
-    for (DWORD i = 0; i < pArgs->dwParamCount; ++i)
+    for (DWORD i = 0; i < dwParamCount; ++i)
     {
         RSTParams *param = &pParams[i];
         json token_request = {
@@ -454,9 +424,12 @@ IOCTL_FUNC(LogonIdentityEx)
         {"credentials", credentials},
         {"token_requests", token_requests}};
 
-    std::string data = logon_data.dump();
-    LOG("LogonIdentityEx data: %s", data.c_str());
+    logon_data_str = logon_data.dump();
+    return S_OK;
+}
 
+HRESULT parse_logon_response(std::string &body)
+{
     // {
     //   "puid": 12345,
     //   "cid": "asdf",
@@ -473,23 +446,16 @@ IOCTL_FUNC(LogonIdentityEx)
     //   ]
     // }
 
-    net::client_t client{};
-    net::result_t result = client.post(rst_endpoint, data, "application/json");
-    if (result.curl_error != CURLE_OK)
-    {
-        return CURLE_TO_HRESULT(result.curl_error);
-    }
-
-    auto response = json::parse(result.body, nullptr, false);
+    auto response = json::parse(body, nullptr, false);
     if (response.is_discarded())
     {
         return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
     }
 
-    const auto username = response["username"].get<std::string>();
+    const auto &username = response["username"].get<std::string>();
 
     {
-        identity_store_t identity_store{storage::db_path()};
+        identity_store_t *identity_store = new identity_store_t{storage::db_path()};
 
         identity_t identity;
         identity.identity = username;
@@ -498,36 +464,140 @@ IOCTL_FUNC(LogonIdentityEx)
         identity.email = response["email_address"].get<std::string>();
         identity.display_name = username;
 
-        identity_store.store(identity);
+        if (!identity_store->store(identity))
+        {
+            LOG("Failed to store identity: %s (PUID: %llu, CUID: %s, Email: %s)",
+                identity.identity.c_str(),
+                identity.puid,
+                identity.cuid.c_str(),
+                identity.email.c_str());
+
+            delete identity_store;
+            return E_FAIL;
+        }
+
         LOG("Stored identity: %s (PUID: %llu, CUID: %s, Email: %s)",
             identity.identity.c_str(),
             identity.puid,
             identity.cuid.c_str(),
             identity.email.c_str());
+
+        delete identity_store;
     }
 
     {
-        token_store_t token_store{storage::db_path()};
-
-        for (const auto &token : response["security_tokens"])
+        if (!response.contains("security_tokens") || !response["security_tokens"].is_array())
         {
+            LOG("No security tokens found in response for %s", username.c_str());
+            return S_OK; // no tokens to store, but not an error
+        }
+
+        token_store_t *token_store = new token_store_t{storage::db_path()};
+
+        const auto &tokens = response["security_tokens"];
+        for (size_t i = 0; i < tokens.size(); i++)
+        {
+            const auto &token = tokens[i];
+
             token_t t;
             t.identity = username;
             t.service = token["service_target"].get<std::string>();
             t.token = token["token"].get<std::string>();
-            t.type = "JWT";
-            t.expires = token["expires"].get<std::string>();
+            t.type = token["token_type"].get<std::string>();
             t.created = token["created"].get<std::string>();
+            t.expires = token["expires"].get<std::string>();
 
-            token_store.store(t);
+            if (!token_store->store(t))
+            {
+                LOG("Failed to store token for %s: %s (Type: %s, Expires: %s)",
+                    username.c_str(),
+                    t.service.c_str(),
+                    t.type.c_str(),
+                    t.expires.c_str());
+
+                continue;
+            }
+
             LOG("Stored token for %s: %s (Type: %s, Expires: %s)",
                 username.c_str(),
                 t.service.c_str(),
                 t.type.c_str(),
                 t.expires.c_str());
         }
+
+        delete token_store;
+    }
+
+    return S_OK;
+}
+
+IOCTL_FUNC(LogonIdentityEx)
+{
+    HRESULT hr = S_OK;
+    VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_LOGON_IDENTITY_EX_ARGS));
+
+    auto *pArgs = reinterpret_cast<PIOCTL_LOGON_IDENTITY_EX_ARGS>(pBufIn);
+    auto *identityCtx = reinterpret_cast<identity_ctx_t *>(pArgs->hIdentity);
+    if (identityCtx == nullptr)
+        return E_INVALIDARG;
+
+    auto memberName = util::wstring_to_utf8(identityCtx->member_name);
+    auto auth_policy = util::wstring_to_utf8(pArgs->szAuthPolicy);
+    if (auth_policy.empty())
+        auth_policy = "LEGACY";
+
+    LOG("LogonIdentityEx called for identity %s with policy %s",
+        memberName.c_str(),
+        auth_policy.c_str());
+
+    // ensuring we have a client configuration, this will kickoff the download and wait for it to complete
+    if (FAILED(hr = config::init_client_config()))
+    {
+        LOG("Failed to initialize client configuration: 0x%08x", hr);
+        return hr;
+    }
+
+    std::string rst_endpoint;
+    {
+        config_store_t cs{config::client_config_db_path()};
+        rst_endpoint = cs.get(g_endpointRequestSecurityTokens);
+        if (rst_endpoint.empty())
+        {
+            LOG("%s", "RST endpoint is not configured, this should never happen!!");
+            return E_UNEXPECTED;
+        }
+    }
+
+    std::string data;
+    if (FAILED(hr = serialise_logon_request(identityCtx, auth_policy, pArgs->gMapParams, pArgs->dwFileSize, pArgs->dwParamCount, data)))
+    {
+        LOG("Failed to serialise logon request for identity %s", memberName.c_str());
+        return E_FAIL;
+    }
+
+    LOG("LogonIdentityEx data: %s", data.c_str());
+
+    net::client_t client{};
+    net::result_t result = client.post(rst_endpoint, data, "application/json");
+    if (result.curl_error != CURLE_OK)
+    {
+        return HRESULT_FROM_CURLE(result.curl_error);
+    }
+
+    LOG("Received response: %s", result.body.c_str());
+
+    if (result.status_code != 200)
+    {
+        LOG("LogonIdentityEx failed with status code %ld", result.status_code);
+        return HRESULT_FROM_HTTP(result.status_code);
+    }
+
+    if (FAILED(hr = parse_logon_response(result.body)))
+    {
+        LOG("Failed to parse logon response: 0x%08x", hr);
+        return hr;
     }
 
 end:
-    return hr;
+    return S_OK;
 }

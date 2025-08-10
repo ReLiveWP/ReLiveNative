@@ -28,9 +28,12 @@ namespace wlidsvc::storage
         : owns_db(true), is_readonly(is_readonly)
     {
         std::string utf8path = wlidsvc::util::wstring_to_utf8(path);
-        if (sqlite3_open(utf8path.c_str(), &db) != SQLITE_OK)
+
+        int rc;
+        if ((rc = sqlite3_open(utf8path.c_str(), &db)) != SQLITE_OK)
         {
-            LOG("Failed to open DB at %s", utf8path.c_str());
+            LOG("Failed to open DB at %s, %s", utf8path.c_str(), sqlite3_errstr(rc));
+            Sleep(10000);
             std::terminate();
         }
     }
@@ -53,45 +56,23 @@ namespace wlidsvc::storage
 
     int base_store_t::step_and_finalize(sqlite3_stmt *stmt)
     {
-        int rc = sqlite3_step(stmt);
+        int rc;
+        if ((rc = sqlite3_step(stmt)) != SQLITE_DONE)
+        {
+            LOG("SQLite error: %s", sqlite3_errmsg(db));
+        }
         sqlite3_finalize(stmt);
 
         return rc;
     }
-
-    const char *DB_INIT =
-        "CREATE TABLE IF NOT EXISTS metadata ("
-        "  \"key\" TEXT PRIMARY KEY,"
-        "  value TEXT"
-        ");"
-        "CREATE TABLE IF NOT EXISTS wlid_config("
-        "  \"key\" TEXT PRIMARY KEY,"
-        "  value TEXT"
-        ");"
-        "CREATE TABLE IF NOT EXISTS identities ("
-        "  identity TEXT PRIMARY KEY,"
-        "  puid INTEGER,"
-        "  cuid TEXT,"
-        "  email TEXT,"
-        "  display_name TEXT"
-        ");"
-        "CREATE INDEX IF NOT EXISTS idx_identity_puid ON identities (puid);"
-        "CREATE TABLE IF NOT EXISTS tokens ("
-        "  identity TEXT,"
-        "  service TEXT,"
-        "  token TEXT,"
-        "  type TEXT,"
-        "  expires TEXT,"
-        "  created TEXT,"
-        "  PRIMARY KEY (identity, service),"
-        "  FOREIGN KEY (identity) REFERENCES identities(identity) ON DELETE CASCADE"
-        ");";
 
     int init_db(void)
     {
         sqlite3 *db = nullptr;
         int code = SQLITE_OK;
         char *errmsg = nullptr;
+
+        util::critsect_t cs{&globals::g_dbCritSect};
 
         std::string schema_version = std::to_string(CURRENT_SCHEMA_VERSION);
         std::string utf8path = wlidsvc::util::wstring_to_utf8(db_path());
@@ -164,7 +145,6 @@ namespace wlidsvc::storage
             sqlite3_finalize(insert_stmt);
         }
 
-        sqlite3_finalize(stmt);
         sqlite3_close(db);
         return code;
     }

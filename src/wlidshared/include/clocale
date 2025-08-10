@@ -1,3 +1,6 @@
+#ifndef UNDER_CE
+#include_next <clocale>
+#else
 #pragma once
 
 #include <locale.h>
@@ -7,3 +10,4 @@ namespace std
     using ::lconv;
     using ::localeconv;
 }
+#endif // _UNDER_CE

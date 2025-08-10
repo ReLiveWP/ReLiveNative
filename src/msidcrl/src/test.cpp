@@ -1,6 +1,10 @@
 #include <windows.h>
 #include "wlidcomm.h"
 
+#ifndef UNDER_CE
+#define IS_TESTING 1
+#endif
+
 #ifdef UNDER_CE
 #undef GetProcAddress
 #define GetProcAddress(hInst, x) GetProcAddressW(hInst, TEXT(x))

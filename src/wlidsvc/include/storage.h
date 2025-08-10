@@ -9,6 +9,44 @@
 struct sqlite3;
 struct sqlite3_stmt;
 
+#define CREATE_METADATA_STORE_SQL \
+    "CREATE TABLE IF NOT EXISTS metadata (\"key\" TEXT PRIMARY KEY, value TEXT);"
+
+#define CREATE_CONFIG_STORE_SQL \
+    "CREATE TABLE IF NOT EXISTS wlid_config (\"key\" TEXT PRIMARY KEY, value TEXT);"
+
+#define CREATE_IDENTITY_STORE_SQL             \
+    "CREATE TABLE IF NOT EXISTS identities (" \
+    "  identity TEXT PRIMARY KEY NOT NULL,"   \
+    "  puid INTEGER,"                         \
+    "  cuid TEXT,"                            \
+    "  email TEXT,"                           \
+    "  display_name TEXT"                     \
+    ");"
+
+#define CREATE_IDENTITY_INDEX_SQL \
+    "CREATE INDEX IF NOT EXISTS idx_identity_puid ON identities (puid);"
+
+#define CREATE_TOKEN_STORE_SQL                                                   \
+    "CREATE TABLE IF NOT EXISTS tokens ("                                        \
+    "  identity TEXT NOT NULL,"                                                  \
+    "  service TEXT NOT NULL,"                                                   \
+    "  token TEXT,"                                                              \
+    "  type TEXT,"                                                               \
+    "  expires TEXT,"                                                            \
+    "  created TEXT,"                                                            \
+    "  PRIMARY KEY (identity, service),"                                         \
+    "  FOREIGN KEY (identity) REFERENCES identities(identity) ON DELETE CASCADE" \
+    ");"
+
+
+#define DB_INIT               \
+    CREATE_METADATA_STORE_SQL \
+    CREATE_CONFIG_STORE_SQL   \
+    CREATE_IDENTITY_STORE_SQL \
+    CREATE_IDENTITY_INDEX_SQL \
+    CREATE_TOKEN_STORE_SQL
+
 namespace wlidsvc::storage
 {
     constexpr int CURRENT_SCHEMA_VERSION = 2;
@@ -18,7 +56,7 @@ namespace wlidsvc::storage
     public:
         base_store_t(sqlite3 *db);
         base_store_t(const std::wstring &path, bool is_readonly = false);
-        virtual ~base_store_t();
+        ~base_store_t();
 
     protected:
         sqlite3 *db = nullptr;
@@ -35,7 +73,7 @@ namespace wlidsvc::storage
     public:
         config_store_t(sqlite3 *db);
         config_store_t(const std::wstring &path, bool is_readonly = false);
-        ~config_store_t();
+        ~config_store_t() = default;
 
         void set(const std::string &key, const std::string &value);
         std::string get(const std::string &key, const std::string &default_value = {});
@@ -55,9 +93,9 @@ namespace wlidsvc::storage
     {
     public:
         identity_store_t(const std::wstring &path, bool is_readonly = false);
-        ~identity_store_t();
+        ~identity_store_t() = default;
 
-        void store(const identity_t &identity);
+        bool store(const identity_t &identity);
         bool retrieve(const std::string &identity, identity_t &out_identity);
 
         inline bool retrieve(const std::wstring &identity, identity_t &out_identity)
@@ -70,9 +108,9 @@ namespace wlidsvc::storage
     {
     public:
         token_store_t(const std::wstring &path, bool is_readonly = false);
-        ~token_store_t();
+        ~token_store_t() = default;
 
-        void store(const token_t &token);
+        bool store(const token_t &token);
         bool retrieve(const std::string &identity, const std::string &service, token_t &out_token);
 
         inline bool retrieve(const std::wstring &identity, const std::wstring &service, token_t &out_token)

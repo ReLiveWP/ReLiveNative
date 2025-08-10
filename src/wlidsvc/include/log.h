@@ -194,7 +194,7 @@ namespace wlidsvc::log
 
         static DWORD thread_proc(IN LPVOID lpParameter);
 
-        logqueue_t<100> queue_;
+        logqueue_t<250> queue_;
         HANDLE hThread_;
         logger_thread_state_t state_;
         CRITICAL_SECTION init_cs;

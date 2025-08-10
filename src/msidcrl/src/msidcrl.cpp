@@ -110,13 +110,15 @@ extern "C"
         HRESULT hr;
         GUID guid;
         HANDLE hMap = NULL;
-        if (FAILED(hr = SerializeRSTParams(pParams, dwParamCount, &guid, &hMap)))
+        DWORD dwFileSize = 0;
+        if (FAILED(hr = SerializeRSTParams(pParams, dwParamCount, &guid, &hMap, &dwFileSize)))
             return hr;
 
         IOCTL_AUTH_IDENTITY_TO_SERVICE_EX_ARGS args = {};
         args.hIdentity = hIdentity->hIdentitySrv;
         args.dwServiceTokenFlags = serviceTokenFlags;
         args.gMapParams = guid;
+        args.dwFileSize = dwFileSize;
         args.dwParamCount = dwParamCount;
 
         hr = DeviceIoControl(g_hDriver,
@@ -405,8 +407,6 @@ extern "C"
         }
 
         return hr;
-
-        return E_NOTIMPL;
     }
 
     HRESULT GetDefaultID(OUT LPWSTR *szDefaultID)
@@ -682,10 +682,12 @@ extern "C"
         HRESULT hr;
         GUID guid;
         HANDLE hMap = NULL;
-        if (FAILED(hr = SerializeRSTParams(pcRSTParams, dwpcRSTParamsCount, &guid, &hMap)))
+        DWORD dwFileSize = 0;
+        if (FAILED(hr = SerializeRSTParams(pcRSTParams, dwpcRSTParamsCount, &guid, &hMap, &dwFileSize)))
             return hr;
 
         args.gMapParams = guid;
+        args.dwFileSize = dwFileSize;
 
         hr = DeviceIoControl(g_hDriver,
                              IOCTL_WLIDSVC_LOGON_IDENTITY_EX,

@@ -7,7 +7,9 @@
 #include "ceimp.h"
 
 #define FACILITY_CURL 83
-#define CURLE_TO_HRESULT(e) MAKE_HRESULT(1, FACILITY_CURL, e)
+#define FACILITY_HTTP 25
+#define HRESULT_FROM_CURLE(e) MAKE_HRESULT(1, FACILITY_CURL, e)
+#define HRESULT_FROM_HTTP(code) MAKE_HRESULT(SEVERITY_ERROR, FACILITY_HTTP, code)
 
 namespace wlidsvc::util
 {

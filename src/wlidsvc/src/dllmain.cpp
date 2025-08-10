@@ -19,6 +19,7 @@ extern "C"
             curl_global_init(CURL_GLOBAL_DEFAULT);
             InitializeCriticalSection(&g_wlidSvcReadyCritSect);
             InitializeCriticalSection(&g_ClientConfigCritSect);
+            InitializeCriticalSection(&g_dbCritSect);
             g_tlsIsImpersonatedIdx = TlsAlloc();
             DisableThreadLibraryCalls(hinstDLL);
             break;

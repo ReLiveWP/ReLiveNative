@@ -168,6 +168,7 @@ typedef struct
     DWORD_PTR hIdentity;
     DWORD dwServiceTokenFlags;
     GUID gMapParams;
+    DWORD dwFileSize;
     DWORD dwParamCount;
 } IOCTL_AUTH_IDENTITY_TO_SERVICE_EX_ARGS, *PIOCTL_AUTH_IDENTITY_TO_SERVICE_EX_ARGS;
 
@@ -179,6 +180,7 @@ typedef struct
     WCHAR szAuthPolicy[256];
     DWORD dwAuthFlags;
     GUID gMapParams;
+    DWORD dwFileSize;
     DWORD dwParamCount;
 } IOCTL_LOGON_IDENTITY_EX_ARGS, *PIOCTL_LOGON_IDENTITY_EX_ARGS;
 

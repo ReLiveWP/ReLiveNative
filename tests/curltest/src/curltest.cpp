@@ -18,7 +18,11 @@ static void on_curl_error(CURLcode error_code)
     show_dialog(curl_easy_strerror(error_code));
 }
 
+#ifdef UNDER_CE
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nShowCmd)
+#else
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
+#endif
 {
     CURLcode res;
     CURL *curl;

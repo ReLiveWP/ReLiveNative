@@ -2,6 +2,7 @@
 #include <locale.h>
 #include <windows.h>
 
+#ifdef UNDER_CE
 static DWORD gTLSIndex;
 static CRITICAL_SECTION gCS;
 static lconv gLconv = {".", ","};
@@ -33,3 +34,9 @@ int *__errno_location(void)
     LeaveCriticalSection(&gCS);
     return (int *)val;
 }
+#else
+void init_errno(void)
+{
+    // No-op for non-CE platforms
+}
+#endif // UNDER_CE

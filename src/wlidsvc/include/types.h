@@ -3,6 +3,7 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <cstdint>
 
 struct sqlite3;
 typedef void CURLM;
@@ -29,14 +30,6 @@ namespace wlidsvc
         std::string type; // "JWT", "X509v3", etc.
         std::string expires; // ISO 8601 format
         std::string created; // ISO 8601 format
-    };
-
-    struct wcase_insensitive_t : public std::binary_function<std::wstring, std::wstring, bool>
-    {
-        bool operator()(const std::wstring &lhs, const std::wstring &rhs) const
-        {
-            return CompareStringW(LOCALE_USER_DEFAULT, NORM_IGNORECASE, lhs.c_str(), -1, rhs.c_str(), -1) == CSTR_EQUAL;
-        }
     };
 
     struct identity_ctx_t

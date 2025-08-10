@@ -1,5 +1,9 @@
 #pragma once
 
+#ifndef UNDER_CE
+#define IS_TESTING 1
+#endif
+
 #include <windows.h>
 #include <wincrypt.h>
 #include <wlidcomm.h>
@@ -162,7 +166,7 @@ extern "C"
         OUT LPWSTR *pwszUnk3);
     HRESULT WSResolveHIP(IN LPVOID lpUnk1, IN HIDENTITY *hIdentity, LPCWSTR szUnk2);
 
-    HRESULT SerializeRSTParams(IN RSTParams *pParams, IN DWORD dwParamCount, OUT LPGUID lpgFileName, OUT HANDLE* hMappedFile);
+    HRESULT SerializeRSTParams(IN RSTParams *pParams, IN DWORD dwParamCount, OUT LPGUID lpgFileName, OUT HANDLE* hMappedFile, OUT DWORD *dwFileSize);
 }
 
 #if IS_TESTING

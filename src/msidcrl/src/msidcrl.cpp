@@ -339,10 +339,10 @@ extern "C"
 
     HRESULT GetAuthState(
         IN HIDENTITY hIdentity,
-        OUT DWORD *pdwAuthState,
-        OUT DWORD *pdwAuthRequired,
-        OUT DWORD *pdwRequestStatus,
-        OUT LPWSTR *szWebFlowUrl)
+        OUT OPTIONAL DWORD *pdwAuthState,
+        OUT OPTIONAL DWORD *pdwAuthRequired,
+        OUT OPTIONAL DWORD *pdwRequestStatus,
+        OUT OPTIONAL LPWSTR *szWebFlowUrl)
     {
         LOG_MESSAGE_FMT(TEXT("GetAuthState: hIdentity=%08hx;"), hIdentity);
 
@@ -358,15 +358,20 @@ extern "C"
     HRESULT GetAuthStateEx(
         IN HIDENTITY hIdentity,
         IN OPTIONAL LPCWSTR szServiceTarget,
-        OUT DWORD *pdwAuthState,
-        OUT DWORD *pdwAuthRequired,
-        OUT DWORD *pdwRequestStatus,
-        OUT LPWSTR *szWebFlowUrl)
+        OUT OPTIONAL DWORD *pdwAuthState,
+        OUT OPTIONAL DWORD *pdwAuthRequired,
+        OUT OPTIONAL DWORD *pdwRequestStatus,
+        OUT OPTIONAL LPWSTR *szWebFlowUrl)
     {
-        LOG_MESSAGE_FMT(TEXT("GetAuthStateEx: hIdentity=%08hx; szServiceTarget=%s;"), hIdentity, LOG_STRING(szServiceTarget));
+        LOG_MESSAGE_FMT(TEXT("GetAuthStateEx: hIdentity=%08hx; szServiceTarget=%s; pdwAuthState=%08hx; pdwAuthRequired=%08hx; pdwRequestStatus=%08hx; szWebFlowUrl=%08hx;"),
+                        hIdentity,
+                        LOG_STRING(szServiceTarget),
+                        pdwAuthState,
+                        pdwAuthRequired,
+                        pdwRequestStatus,
+                        szWebFlowUrl);
 
-        if (hIdentity == nullptr || pdwAuthState == nullptr || pdwAuthRequired == nullptr ||
-            pdwRequestStatus == nullptr || szWebFlowUrl == nullptr)
+        if (hIdentity == nullptr)
         {
             return E_INVALIDARG;
         }
@@ -388,22 +393,31 @@ extern "C"
                                         NULL, NULL)))
             return hr;
 
-        *pdwAuthState = retVal.dwAuthState;
-        *pdwAuthRequired = retVal.dwAuthRequired;
-        *pdwRequestStatus = retVal.dwRequestStatus;
-        if (retVal.szWebFlowUrl[0] != L'\0')
-        {
-            size_t len = wcslen(retVal.szWebFlowUrl);
-            *szWebFlowUrl = (LPWSTR)malloc((len + 1) * sizeof(WCHAR));
-            if (*szWebFlowUrl == nullptr)
-                return E_OUTOFMEMORY;
+        if (pdwAuthState != nullptr)
+            *pdwAuthState = retVal.dwAuthState;
+        if (pdwAuthRequired != nullptr)
+            *pdwAuthRequired = retVal.dwAuthRequired;
+        if (pdwRequestStatus != nullptr)
+            *pdwRequestStatus = retVal.dwRequestStatus;
 
-            wcsncpy(*szWebFlowUrl, retVal.szWebFlowUrl, len + 1);
-            (*szWebFlowUrl)[len] = L'\0';
-        }
-        else
+        if (szWebFlowUrl != nullptr)
         {
-            *szWebFlowUrl = nullptr;
+            if (retVal.szWebFlowUrl[0] != L'\0')
+            {
+                size_t len = wcslen(retVal.szWebFlowUrl);
+                LPWSTR pszWebFlowUrl = (LPWSTR)malloc((len + 1) * sizeof(WCHAR));
+                if (pszWebFlowUrl == nullptr)
+                    return E_OUTOFMEMORY;
+
+                wcsncpy(pszWebFlowUrl, retVal.szWebFlowUrl, len + 1);
+                pszWebFlowUrl[len] = L'\0';
+
+                *szWebFlowUrl = pszWebFlowUrl;
+            }
+            else
+            {
+                *szWebFlowUrl = nullptr;
+            }
         }
 
         return hr;

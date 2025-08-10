@@ -70,17 +70,17 @@ extern "C"
         OUT LPWSTR *szAuthToken);
     HRESULT GetAuthState(
         IN HIDENTITY hIdentity,
-        OUT DWORD *pdwAuthState,
-        OUT DWORD *pdwAuthRequired,
-        OUT DWORD *pdwRequestStatus,
-        OUT LPWSTR *szWebFlowUrl);
+        OUT OPTIONAL DWORD *pdwAuthState,
+        OUT OPTIONAL DWORD *pdwAuthRequired,
+        OUT OPTIONAL DWORD *pdwRequestStatus,
+        OUT OPTIONAL LPWSTR *szWebFlowUrl);
     HRESULT GetAuthStateEx(
         IN HIDENTITY hIdentity,
         IN LPCWSTR szServiceTarget,
-        OUT DWORD *pdwAuthState,
-        OUT DWORD *pdwAuthRequired,
-        OUT DWORD *pdwRequestStatus,
-        OUT LPWSTR *szWebFlowUrl);
+        OUT OPTIONAL DWORD *pdwAuthState,
+        OUT OPTIONAL DWORD *pdwAuthRequired,
+        OUT OPTIONAL DWORD *pdwRequestStatus,
+        OUT OPTIONAL LPWSTR *szWebFlowUrl);
     HRESULT GetDefaultID(OUT LPWSTR *szDefaultID);
     HRESULT GetDeviceId(
         IN DWORD dwFlags,

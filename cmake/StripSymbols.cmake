@@ -5,11 +5,12 @@ endif()
 
 function(strip_symbols target)
     add_custom_command(TARGET ${target} POST_BUILD
-        # COMMAND ${OBJCOPY_TOOL} --only-keep-debug
-        #         $<TARGET_FILE:${target}>
-        #         $<TARGET_FILE:${target}>.dbg
+        COMMAND ${OBJCOPY_TOOL} --only-keep-debug
+                 $<TARGET_FILE:${target}>
+                 $<TARGET_FILE:${target}>.dbg
 
-        COMMAND cp $<TARGET_FILE:${target}> $<TARGET_FILE:${target}>.dbg
+        
+        # COMMAND cp $<TARGET_FILE:${target}> $<TARGET_FILE:${target}>.dbg
 
         COMMAND ${OBJCOPY_TOOL} --strip-all
                 $<TARGET_FILE:${target}>

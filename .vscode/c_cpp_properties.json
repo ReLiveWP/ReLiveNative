@@ -20,6 +20,21 @@
             "cStandard": "c11",
             "cppStandard": "c++17",
             "intelliSenseMode": "windows-gcc-arm"
+        },
+        {
+            "name": "Mingw32 (x86_64)",
+            "includePath": [
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "UNICODE",
+                "_UNICODE",
+                "__GNUC__"
+            ],
+            "cStandard": "c17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "windows-gcc-x64",
+            "compilerPath": "/usr/bin/x86_64-w64-mingw32-gcc"
         }
     ],
     "version": 4

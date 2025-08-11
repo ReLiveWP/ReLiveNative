@@ -9,6 +9,7 @@
 #include "globals.h"
 #include "update.h"
 
+#include <curl/curl.h>
 #include <sqlite3.h>
 
 using namespace wlidsvc;
@@ -17,8 +18,16 @@ using namespace wlidsvc::storage;
 
 extern "C"
 {
+    extern void init_errno(void);
     DWORD_PTR WLI_Init(DWORD_PTR hContext)
     {
+        init_errno();
+        curl_global_init(CURL_GLOBAL_DEFAULT);
+        InitializeCriticalSection(&g_wlidSvcReadyCritSect);
+        InitializeCriticalSection(&g_ClientConfigCritSect);
+        InitializeCriticalSection(&g_dbCritSect);
+        g_tlsIsImpersonatedIdx = TlsAlloc();
+
         LOG("%s", "WLI_Init called!");
 
         {
@@ -89,6 +98,8 @@ extern "C"
         IOCTL_HANDLER(IOCTL_WLIDSVC_GET_AUTH_STATE_EX, WLI_GetAuthStateEx);
         IOCTL_HANDLER(IOCTL_WLIDSVC_AUTH_IDENTITY_TO_SERVICE_EX, WLI_AuthIdentityToServiceEx);
         IOCTL_HANDLER(IOCTL_WLIDSVC_LOGON_IDENTITY_EX, WLI_LogonIdentityEx);
+        IOCTL_HANDLER(IOCTL_WLIDSVC_AUTH_IDENTITY_TO_SERVICE, WLI_AuthIdentityToService);
+        IOCTL_HANDLER(IOCTL_WLIDSVC_PERSIST_CREDENTIAL, WLI_PersistCredential);
         END_IOCTL_MAP()
         return FALSE;
     }

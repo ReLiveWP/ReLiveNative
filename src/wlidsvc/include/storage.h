@@ -39,17 +39,26 @@ struct sqlite3_stmt;
     "  FOREIGN KEY (identity) REFERENCES identities(identity) ON DELETE CASCADE" \
     ");"
 
+#define CREATE_IDENTITY_PROPERTY_STORE_SQL                                       \
+    "CREATE TABLE IF NOT EXISTS identity_properties ("                           \
+    "  identity TEXT NOT NULL,"                                                  \
+    "  propkey TEXT NOT NULL,"                                                   \
+    "  propvalue TEXT,"                                                          \
+    "  PRIMARY KEY (identity, propkey),"                                         \
+    "  FOREIGN KEY (identity) REFERENCES identities(identity) ON DELETE CASCADE" \
+    ");"
 
 #define DB_INIT               \
     CREATE_METADATA_STORE_SQL \
     CREATE_CONFIG_STORE_SQL   \
     CREATE_IDENTITY_STORE_SQL \
     CREATE_IDENTITY_INDEX_SQL \
-    CREATE_TOKEN_STORE_SQL
+    CREATE_TOKEN_STORE_SQL    \
+    CREATE_IDENTITY_PROPERTY_STORE_SQL
 
 namespace wlidsvc::storage
 {
-    constexpr int CURRENT_SCHEMA_VERSION = 2;
+    constexpr int CURRENT_SCHEMA_VERSION = 3;
 
     class base_store_t
     {
@@ -118,6 +127,35 @@ namespace wlidsvc::storage
             return retrieve(wlidsvc::util::wstring_to_utf8(identity), wlidsvc::util::wstring_to_utf8(service), out_token);
         }
 
+        // todo: C++ iterators seem like hell
+    };
+
+    class identity_property_store_t : protected base_store_t
+    {
+    public:
+        identity_property_store_t(const std::wstring &path, const std::string &identity, bool is_readonly = false);
+        ~identity_property_store_t() = default;
+
+        bool set(const std::string &key, const std::string &value);
+        bool get(const std::string &key, std::string &value);
+
+        inline bool set(const std::wstring &key, const std::wstring &value)
+        {
+            return set(wlidsvc::util::wstring_to_utf8(key), wlidsvc::util::wstring_to_utf8(value));
+        }
+
+        inline bool get(const std::wstring &key, std::wstring &value)
+        {
+            std::string value_utf8 = util::wstring_to_utf8(value);
+            bool retVal = get(wlidsvc::util::wstring_to_utf8(key), value_utf8);
+            if (retVal)
+                value = util::utf8_to_wstring(value_utf8);
+
+            return retVal;
+        }
+
+    private:
+        std::string identity;
         // todo: C++ iterators seem like hell
     };
 

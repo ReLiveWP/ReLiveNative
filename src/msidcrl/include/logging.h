@@ -6,7 +6,7 @@
     do                                                                                                                                \
     {                                                                                                                                 \
         ::EnterCriticalSection(&msidcrl::globals::g_hDriverCrtiSec);                                                                  \
-        if (g_hDriver)                                                                                                                \
+        if (msidcrl::globals::g_hDriver)                                                                                                                \
         {                                                                                                                             \
             WCHAR data[512];                                                                                                          \
             ::wsprintfW(data, L"%s",                                                                                                  \
@@ -20,7 +20,7 @@
     do                                                                                                                      \
     {                                                                                                                       \
         ::EnterCriticalSection(&msidcrl::globals::g_hDriverCrtiSec);                                                        \
-        if (g_hDriver)                                                                                                      \
+        if (msidcrl::globals::g_hDriver)                                                                                                      \
         {                                                                                                                   \
             WCHAR data[512];                                                                                                \
             ::wsprintfW(data, fmt, __VA_ARGS__);                                                                            \

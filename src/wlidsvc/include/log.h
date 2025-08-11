@@ -24,12 +24,12 @@ typedef void CURL;
         return E_INVALIDARG;                                                         \
     }
 
-#define WINDOWS_TICK 10000000
-#define SEC_TO_UNIX_EPOCH 11644473600LL
+#define WINDOWS_TICK 10000
+#define SEC_TO_UNIX_EPOCH 11644473600000LL
 static inline __time64_t filetime_to_time(const FILETIME &ft)
 {
-    long long secs = ((*(LONGLONG *)&(ft)) / WINDOWS_TICK) - SEC_TO_UNIX_EPOCH;
-    __time64_t t = (__time64_t)secs;
+    long long ms = ((*(LONGLONG *)&(ft)) / WINDOWS_TICK) - SEC_TO_UNIX_EPOCH;
+    __time64_t t = (__time64_t)ms;
     return t;
 }
 

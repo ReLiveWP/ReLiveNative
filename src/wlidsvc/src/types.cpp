@@ -6,8 +6,13 @@
 namespace wlidsvc
 {
     identity_ctx_t::identity_ctx_t(handle_ctx_t *lpHandleCtx, LPWSTR szMemberName, DWORD dwFlags)
-        : handle_ctx(lpHandleCtx), member_name(szMemberName), flags(dwFlags), is_authenticated(false), curl_multi(nullptr), sqlite(nullptr),
-          properties(), credentials()
+        : handle_ctx(lpHandleCtx),
+          member_name(szMemberName),
+          flags(dwFlags),
+          is_authenticated(false),
+          curl_multi(nullptr),
+          sqlite(nullptr),
+          credentials()
     {
         curl_multi = curl_multi_init();
     }

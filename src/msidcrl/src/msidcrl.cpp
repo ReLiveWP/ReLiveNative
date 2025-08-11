@@ -7,8 +7,16 @@ using namespace msidcrl::globals;
 
 extern "C"
 {
+#ifndef UNDER_CE
+    void TEST_InitHooks(void);
+#endif
+
     HRESULT Initialize(GUID *lpGuid, DWORD dwVersionMajor, DWORD dwVersionMinor)
     {
+#ifndef UNDER_CE
+        TEST_InitHooks();
+#endif
+
         IOCTL_INIT_HANDLE_ARGS args = {};
         HANDLE hEvent, hDriver;
         HRESULT hr = S_OK;
@@ -58,6 +66,12 @@ extern "C"
         return -1;
     }
 
+    HRESULT InitializeEx(GUID *lpGuid, DWORD dwVersionMajor, DWORD dwVersionMinor, IDCRL_OPTION *lpOptions, DWORD cbOptions)
+    {
+        // for now
+        return Initialize(lpGuid, dwVersionMajor, dwVersionMinor);
+    }
+
     HRESULT Uninitialize()
     {
         LOG_MESSAGE(TEXT("Uninitialize"));
@@ -86,8 +100,15 @@ extern "C"
         OUT OPTIONAL DWORD *pcbSessionKeyLength)
     {
         LOG_MESSAGE_FMT(
-            TEXT("AuthIdentityToService: hIdentity=%08hx; szServiceTarget=%s; szServicePolicy=%s; dwTokenRequestFlags=%d;"),
-            hIdentity, LOG_STRING(szServiceTarget), LOG_STRING(szServicePolicy), dwTokenRequestFlags);
+            TEXT("AuthIdentityToService: hIdentity=0x%08hx; szServiceTarget=%s; szServicePolicy=%s; dwTokenRequestFlags=%d; szToken=0x%08hx; pdwResultFlags=0x%08hx; ppbSessionKey=0x%08hx; pcbSessionKeyLength=0x%08hx;"),
+            hIdentity,
+            LOG_STRING(szServiceTarget),
+            LOG_STRING(szServicePolicy),
+            dwTokenRequestFlags,
+            szToken,
+            pdwResultFlags,
+            ppbSessionKey,
+            pcbSessionKeyLength);
 
         return E_NOTIMPL;
     }
@@ -740,7 +761,7 @@ extern "C"
 
     HRESULT SetCredential(IN HIDENTITY hIdentity, IN LPCWSTR szCredType, IN LPCWSTR szCredValue)
     {
-        LOG_MESSAGE_FMT(TEXT("SetCredential: hIdentity=%08hx; szCredType=%s; szCredValue=%s;"), hIdentity, LOG_STRING(szCredType), LOG_STRING(szCredValue));
+        LOG_MESSAGE_FMT(TEXT("SetCredential: hIdentity=%08hx; szCredType=%s; szCredValue=REDACTED;"), hIdentity, LOG_STRING(szCredType));
 
         if (hIdentity == nullptr || szCredType == nullptr || szCredValue == nullptr)
         {

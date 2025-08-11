@@ -214,9 +214,9 @@ IOCTL_FUNC(GetDefaultID)
     if (default_id.empty())
         return S_FALSE;
 
-    VALIDATE_PARAMETER(default_id.size() < 256);
+    VALIDATE_PARAMETER(default_id.size() >= 256);
 
-    wcscpy(data.szDefaultId, default_id.c_str());
+    wcsncpy(data.szDefaultId, default_id.c_str(), 256);
 
     std::memcpy(pBufOut, &data, sizeof(IOCTL_GET_DEFAULT_ID_RETURN));
     return hr;
@@ -283,7 +283,7 @@ IOCTL_FUNC(GetIdentityPropertyByName)
             return E_INVALIDARG;
         }
 
-        wcscpy(pReturn->szPropertyValue, propertyValue.c_str());
+        wcsncpy(pReturn->szPropertyValue, propertyValue.c_str(), 128);
         return S_OK;
     }
 
@@ -299,7 +299,7 @@ IOCTL_FUNC(GetIdentityPropertyByName)
             return E_INVALIDARG;
         }
 
-        wcscpy(pReturn->szPropertyValue, identityCtx->member_name.c_str());
+        wcsncpy(pReturn->szPropertyValue, identityCtx->member_name.c_str(), 128);
         return S_OK;
     }
     else
@@ -322,19 +322,13 @@ IOCTL_FUNC(SetCredential)
 
     identityCtx->credentials[credentialType] = credentialValue;
 
-    LOG("SetCredential: hIdentity=%08hx; szCredentialType=%s; szCredential=%s;",
-        pArgs->hIdentity, util::wstring_to_utf8(credentialType).c_str(), util::wstring_to_utf8(credentialValue).c_str());
-
-    // dump the properties for debugging
-    LOG("Credentials for identity %s:", util::wstring_to_utf8(identityCtx->member_name).c_str());
-    for (const auto &prop : identityCtx->credentials)
-    {
-        LOG("  %s: %s", util::wstring_to_utf8(prop.first).c_str(),
-            util::wstring_to_utf8(prop.second).c_str());
-    }
+    LOG("SetCredential: hIdentity=%08hx; szCredentialType=%s; szCredential=REDACTED;",
+        pArgs->hIdentity, util::wstring_to_utf8(credentialType).c_str());
 
     return S_OK;
 }
+
+#define AUTHENTICATED_USING_PASSWORD 0x48803
 
 IOCTL_FUNC(GetAuthStateEx)
 {
@@ -348,10 +342,19 @@ IOCTL_FUNC(GetAuthStateEx)
     if (identityCtx == nullptr)
         return E_INVALIDARG;
 
-    pReturn->dwAuthState = 0;
-    pReturn->dwAuthRequired = 1;
+    if (identityCtx->is_authenticated)
+    {
+        pReturn->dwAuthState = AUTHENTICATED_USING_PASSWORD;
+        pReturn->dwAuthRequired = 0;
+    }
+    else
+    {
+        pReturn->dwAuthState = 0;
+        pReturn->dwAuthRequired = 1;
+    }
+
     pReturn->dwRequestStatus = S_OK;
-    wcscpy(pReturn->szWebFlowUrl, L"https://example.com/auth");
+    wcsncpy(pReturn->szWebFlowUrl, L"https://example.com/auth", 512);
 
     return S_OK;
 }
@@ -428,7 +431,7 @@ HRESULT serialise_logon_request(identity_ctx_t *identityCtx, const std::string &
     return S_OK;
 }
 
-HRESULT parse_logon_response(std::string &body)
+HRESULT parse_logon_response(identity_ctx_t *identityCtx, std::string &body)
 {
     // {
     //   "puid": 12345,
@@ -450,6 +453,12 @@ HRESULT parse_logon_response(std::string &body)
     if (response.is_discarded())
     {
         return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+    }
+
+    if (response["error_code"].is_number_integer())
+    {
+        // server reported an error
+        return response["error_code"].get<HRESULT>();
     }
 
     const auto &username = response["username"].get<std::string>();
@@ -523,6 +532,18 @@ HRESULT parse_logon_response(std::string &body)
         }
     }
 
+    {
+        config_store_t cs{storage::db_path()};
+        auto default_id = cs.get("DefaultID");
+        if (default_id.empty())
+        {
+            cs.set("DefaultID", username);
+        }
+    }
+
+    identityCtx->member_name = util::utf8_to_wstring(username);
+    identityCtx->is_authenticated = true;
+
     return S_OK;
 }
 
@@ -581,13 +602,13 @@ IOCTL_FUNC(LogonIdentityEx)
 
     LOG("Received response: %s", result.body.c_str());
 
-    if (result.status_code != 200)
+    if (result.status_code != 200 && result.status_code != 401)
     {
         LOG("LogonIdentityEx failed with status code %ld", result.status_code);
         return HRESULT_FROM_HTTP(result.status_code);
     }
 
-    if (FAILED(hr = parse_logon_response(result.body)))
+    if (FAILED(hr = parse_logon_response(identityCtx, result.body)))
     {
         LOG("Failed to parse logon response: 0x%08x", hr);
         return hr;

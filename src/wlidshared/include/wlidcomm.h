@@ -75,9 +75,9 @@
         return FALSE;                         \
         }
 
-#pragma pack(push, 1)
-
 #include "msidcrlstr.h"
+
+#pragma pack(push, 1)
 
 #define IOCTL_WLIDSVC_LOG_MESSAGE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_WLIDSVC_LOG_MESSAGE_WIDE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS)

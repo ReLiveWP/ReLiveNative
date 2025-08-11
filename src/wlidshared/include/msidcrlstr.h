@@ -66,3 +66,10 @@ typedef struct tag_UIParam
     int lWinTop;
     LPWSTR lpszSignupUrl;
 } UIParam, *LPUIPARAM;
+
+typedef struct tag_IDCRL_OPTION
+{
+    DWORD m_dwId;
+    DWORD_PTR m_pValue;
+    DWORD m_cbValue;
+} IDCRL_OPTION;

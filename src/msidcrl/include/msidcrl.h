@@ -8,10 +8,11 @@
 #include <wincrypt.h>
 #include <wlidcomm.h>
 
+
 extern "C"
 {
-    
     HRESULT Initialize(GUID *lpGuid, DWORD dwVersionMajor, DWORD dwVersionMinor);
+    HRESULT InitializeEx(GUID* lpGuid, DWORD dwVersionMajor, DWORD dwVersionMinor, IDCRL_OPTION* lpOptions, DWORD cbOptions);
     HRESULT Uninitialize();
     HRESULT AuthIdentityToService(
         IN HIDENTITY hIdentity,
@@ -76,7 +77,7 @@ extern "C"
         OUT OPTIONAL LPWSTR *szWebFlowUrl);
     HRESULT GetAuthStateEx(
         IN HIDENTITY hIdentity,
-        IN LPCWSTR szServiceTarget,
+        IN OPTIONAL LPCWSTR szServiceTarget,
         OUT OPTIONAL DWORD *pdwAuthState,
         OUT OPTIONAL DWORD *pdwAuthRequired,
         OUT OPTIONAL DWORD *pdwRequestStatus,
@@ -166,7 +167,10 @@ extern "C"
         OUT LPWSTR *pwszUnk3);
     HRESULT WSResolveHIP(IN LPVOID lpUnk1, IN HIDENTITY *hIdentity, LPCWSTR szUnk2);
 
-    HRESULT SerializeRSTParams(IN RSTParams *pParams, IN DWORD dwParamCount, OUT LPGUID lpgFileName, OUT HANDLE* hMappedFile, OUT DWORD *dwFileSize);
+    // for zune desktop support
+    // InitializeEx@29
+
+    HRESULT SerializeRSTParams(IN RSTParams *pParams, IN DWORD dwParamCount, OUT LPGUID lpgFileName, OUT HANDLE *hMappedFile, OUT DWORD *dwFileSize);
 }
 
 #if IS_TESTING

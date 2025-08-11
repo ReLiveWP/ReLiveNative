@@ -39,6 +39,7 @@ namespace wlidsvc
 
         handle_ctx_t *handle_ctx;
         std::wstring member_name;
+        bool is_authenticated;
         DWORD flags;
 
         std::map<std::wstring, std::wstring> properties;

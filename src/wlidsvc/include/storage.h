@@ -139,6 +139,8 @@ namespace wlidsvc::storage
         bool set(const std::string &key, const std::string &value);
         bool get(const std::string &key, std::string &value);
 
+        bool find_identities_for_credential_type(const std::wstring credential_type, std::vector<std::wstring> &identities);
+
         inline bool set(const std::wstring &key, const std::wstring &value)
         {
             return set(wlidsvc::util::wstring_to_utf8(key), wlidsvc::util::wstring_to_utf8(value));

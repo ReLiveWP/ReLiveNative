@@ -13,6 +13,16 @@ typedef void CURL;
 #define STRINGIZE2(x) #x
 #endif
 
+#ifdef NO_LOGGING
+#define LOG(fmt, ...)
+#define LOG_WIDE(fmt, ...)
+
+#define VALIDATE_PARAMETER(x) \
+    if ((x))                  \
+    {                         \
+        return E_INVALIDARG;  \
+    }
+#else
 #define LINE_STRING STRINGIZE(__LINE__)
 #define LOG(fmt, ...) wlidsvc::log::info().log(__FILE__ ":" LINE_STRING " " fmt, __VA_ARGS__)
 #define LOG_WIDE(fmt, ...) wlidsvc::log::info().log(TEXT(__FILE__) L":" TEXT(LINE_STRING) L" " fmt, __VA_ARGS__)
@@ -23,6 +33,7 @@ typedef void CURL;
         wlidsvc::log::info().log(__FILE__ " " LINE_STRING " ASSERTION FAILED: " #x); \
         return E_INVALIDARG;                                                         \
     }
+#endif
 
 #define WINDOWS_TICK 10000
 #define SEC_TO_UNIX_EPOCH 11644473600000LL
@@ -42,7 +53,7 @@ static inline char *wchar_to_char(const wchar_t *fmt)
     char *tmp = new (std::nothrow) char[dwLength + 1];
     if (tmp == nullptr)
         return nullptr;
-        
+
     WideCharToMultiByte(CP_UTF8, 0, fmt, length, tmp, dwLength, NULL, NULL);
     tmp[dwLength] = '\0';
 

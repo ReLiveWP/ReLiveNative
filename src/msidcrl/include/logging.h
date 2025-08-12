@@ -1,7 +1,7 @@
 #pragma once
 #include "globals.h"
 
-#ifndef _NO_LOGGING
+#ifndef NO_LOGGING
 #define LOG_MESSAGE(msg)                                                                                                              \
     do                                                                                                                                \
     {                                                                                                                                 \

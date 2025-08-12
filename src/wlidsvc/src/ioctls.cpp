@@ -8,7 +8,7 @@
 #include "microrest.h"
 #include "config.h"
 #include "urls.h"
-#include "../include/storage.h"
+#include "storage.h"
 
 #include <algorithm>
 
@@ -563,7 +563,11 @@ IOCTL_FUNC(PersistCredential)
     if (!ps.set(credentialType, credential))
         return E_FAIL;
 
-    // identityCtx->credentials[credentialType] = credentialValue;
+    if (credentialType == L"ps:password")
+    {
+        if (!ps.set(L"ps:membernameonly", identityCtx->member_name))
+            return E_FAIL;
+    }
 
     return S_OK;
 }
@@ -658,6 +662,7 @@ IOCTL_FUNC(AuthIdentityToService)
     {
         std::string credentialType = "ps:password";
         std::string credential{};
+
         identity_property_store_t ps{storage::db_path(), util::wstring_to_utf8(identityCtx->member_name), true};
         if (!ps.get(credentialType, credential))
             return E_FAIL;
@@ -834,5 +839,81 @@ IOCTL_FUNC(LogonIdentityEx)
     }
 
 end:
+    return S_OK;
+}
+
+IOCTL_FUNC(EnumIdentitiesWithCachedCredentials)
+{
+    VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_ENUM_IDENTITIES_WITH_CACHED_CREDENTIALS_ARGS));
+    VALIDATE_PARAMETER(dwLenOut != sizeof(IOCTL_ENUM_IDENTITIES_WITH_CACHED_CREDENTIALS_RETURN));
+
+    auto *pArgs = reinterpret_cast<PIOCTL_ENUM_IDENTITIES_WITH_CACHED_CREDENTIALS_ARGS>(pBufIn);
+    auto *pReturn = reinterpret_cast<PIOCTL_ENUM_IDENTITIES_WITH_CACHED_CREDENTIALS_RETURN>(pBufOut);
+
+    std::wstring credentialType{pArgs->szCredType};
+    std::vector<std::wstring> identities;
+
+    identity_property_store_t ps{storage::db_path(), ""};
+    if (!ps.find_identities_for_credential_type(credentialType, identities))
+        return E_FAIL;
+
+    if (identities.size() == 0)
+    {
+        pReturn->hServerHandle = 0;
+        pReturn->cbIdentities = 0;
+        pReturn->dwIdentities = 0;
+        pReturn->gIdentities = {};
+
+        return S_OK;
+    }
+
+    DWORD cbSize = 0;
+    for (auto &&identity : identities)
+    {
+        cbSize += (identity.size() + 1) * sizeof(WCHAR);
+    }
+
+    GUID guid = {0};
+    WCHAR szGuid[40] = {0};
+    CoCreateGuid(&guid);
+    StringFromGUID2(guid, szGuid, 40);
+
+    HANDLE hMap = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, cbSize, szGuid);
+    if (hMap == NULL)
+    {
+        return HRESULT_FROM_WIN32(GetLastError());
+    }
+
+    BYTE *pMapView = (BYTE *)MapViewOfFile(hMap, FILE_MAP_WRITE, 0, 0, cbSize);
+    if (pMapView == NULL)
+    {
+        CloseHandle(hMap);
+        return HRESULT_FROM_WIN32(GetLastError());
+    }
+
+    DWORD dwOffset = 0;
+    for (auto &&identity : identities)
+    {
+        wcscpy((LPWSTR)(pMapView + dwOffset), identity.c_str());
+        dwOffset += (identity.size() + 1) * sizeof(WCHAR);
+    }
+
+    FlushViewOfFile(pMapView, cbSize);
+    UnmapViewOfFile(pMapView);
+
+    pReturn->hServerHandle = (DWORD_PTR)hMap;
+    pReturn->cbIdentities = cbSize;
+    pReturn->dwIdentities = identities.size();
+    pReturn->gIdentities = guid;
+    return S_OK;
+}
+
+IOCTL_FUNC(CloseEnumIdentitiesHandle)
+{
+    VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_CLOSE_ENUM_IDENTITIES_HANDLE));
+    auto *pArgs = reinterpret_cast<PIOCTL_CLOSE_ENUM_IDENTITIES_HANDLE>(pBufIn);
+
+    CloseHandle((HANDLE)pArgs->hServerHandle);
+
     return S_OK;
 }

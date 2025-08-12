@@ -24,7 +24,8 @@
         {
             "name": "Mingw32 (x86_64)",
             "includePath": [
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/src/wlidsvc/include"
             ],
             "defines": [
                 "UNICODE",

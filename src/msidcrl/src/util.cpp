@@ -118,4 +118,18 @@ extern "C"
         LOG_MESSAGE_FMT(TEXT("Serialized RSTParams to file: %s"), szGuid);
         return S_OK;
     }
+
+    HRESULT Server_CloseEnumIdentitiesHandle(DWORD_PTR hEnumServer)
+    {
+        HRESULT hr = S_OK;
+        IOCTL_CLOSE_ENUM_IDENTITIES_HANDLE args{.hServerHandle = hEnumServer};
+        if (FAILED(hr = DeviceIoControl(g_hDriver,
+                                        IOCTL_WLIDSVC_CLOSE_ENUM_IDENTITIES_HANDLE,
+                                        &args, sizeof(IOCTL_CLOSE_ENUM_IDENTITIES_HANDLE),
+                                        NULL, 0,
+                                        NULL, NULL)))
+            return hr;
+
+        return S_OK;
+    }
 }

@@ -23,6 +23,7 @@ add_library(objlib_wlidsvc OBJECT
 
 target_link_libraries(objlib_wlidsvc PRIVATE wlidshared nlohmann_json::nlohmann_json)
 target_include_directories(objlib_wlidsvc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# target_compile_definitions(objlib_wlidsvc PRIVATE "-DNO_LOGGING=1")
 
 add_library(wlidsvc SHARED
     $<TARGET_OBJECTS:objlib_wlidsvc>

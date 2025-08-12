@@ -19,7 +19,7 @@ typedef PIH *HIDENTITY;
 
 typedef struct tag_PEIH
 {
-
+    LPVOID pEnumCreds;
 } PEIH, *PPEIH;
 
 typedef PEIH *HENUMIDENTITY;

@@ -69,4 +69,22 @@ namespace wlidsvc::storage
         sqlite3_finalize(stmt);
         return false;
     }
+
+    bool identity_property_store_t::find_identities_for_credential_type(const std::wstring credential_type, std::vector<std::wstring> &identities)
+    {
+        const char *sql = "SELECT identity FROM identity_properties WHERE propkey = ?;";
+        sqlite3_stmt *stmt;
+        prepare(sql, &stmt);
+        sqlite3_bind_text(stmt, 1, util::wstring_to_utf8(credential_type).c_str(), -1, SQLITE_TRANSIENT);
+
+        int rc;
+        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+        {
+            std::string identity{reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0))};
+            identities.push_back(util::utf8_to_wstring(identity));
+        }
+
+        sqlite3_finalize(stmt);
+        return rc == SQLITE_DONE;
+    }
 }

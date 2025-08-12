@@ -2,6 +2,7 @@
 #include "msidcrl.h"
 #include "logging.h"
 #include "wlidcomm.h"
+#include "msidcrl_int.h"
 
 using namespace msidcrl::globals;
 
@@ -225,16 +226,144 @@ extern "C"
         return E_INVALIDARG;
     }
 
-    HRESULT CloseEnumIdentitiesHandle(IN HENUMIDENTITY hEnumIdentities)
+    HRESULT EnumIdentitiesWithCachedCredentials(IN LPCWSTR szCredType, OUT HENUMIDENTITY *phEnumIdentities)
     {
-        LOG_MESSAGE_FMT(TEXT("CloseEnumIdentitiesHandle: hEnumIdentities=%08hx;"), hEnumIdentities);
+        LOG_MESSAGE_FMT(TEXT("EnumIdentitiesWithCachedCredentials: szCredType=%s;"), LOG_STRING(szCredType));
 
-        if (hEnumIdentities == nullptr)
+        if (phEnumIdentities == nullptr || szCredType == nullptr)
         {
             return E_INVALIDARG;
         }
 
-        return E_NOTIMPL;
+        HRESULT hr;
+        IOCTL_ENUM_IDENTITIES_WITH_CACHED_CREDENTIALS_ARGS args{};
+        IOCTL_ENUM_IDENTITIES_WITH_CACHED_CREDENTIALS_RETURN retVal{};
+
+        wcsncpy(args.szCredType, szCredType, 64);
+
+        if (FAILED(hr = DeviceIoControl(g_hDriver,
+                                        IOCTL_WLIDSVC_ENUM_IDENTITIES_WITH_CACHED_CREDENTIALS,
+                                        &args, sizeof(IOCTL_ENUM_IDENTITIES_WITH_CACHED_CREDENTIALS_ARGS),
+                                        &retVal, sizeof(IOCTL_ENUM_IDENTITIES_WITH_CACHED_CREDENTIALS_RETURN),
+                                        NULL, NULL)))
+            return hr;
+
+        PENUM_IDENTITY_CREDENTIALS pEnumCreds = (PENUM_IDENTITY_CREDENTIALS)calloc(1, sizeof(ENUM_IDENTITY_CREDENTIALS));
+
+        BYTE *pMapView;
+        if (retVal.dwIdentities != 0)
+        {
+            WCHAR szGuid[40] = {0};
+            StringFromGUID2(retVal.gIdentities, szGuid, 40);
+            HANDLE hMap = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, retVal.cbIdentities, szGuid);
+            if (hMap == NULL)
+            {
+                Server_CloseEnumIdentitiesHandle(retVal.hServerHandle);
+                LOG_MESSAGE_FMT(TEXT("OpenFileMapping failed: %d"), GetLastError());
+                return HRESULT_FROM_WIN32(GetLastError());
+            }
+
+            BYTE *pMapView = (BYTE *)MapViewOfFile(hMap, FILE_MAP_READ, 0, 0, 0);
+            if (pMapView == NULL)
+            {
+                CloseHandle(hMap);
+                Server_CloseEnumIdentitiesHandle(retVal.hServerHandle);
+                LOG_MESSAGE_FMT(TEXT("MapViewOfFile failed: %d"), GetLastError());
+                return HRESULT_FROM_WIN32(GetLastError());
+            }
+
+            pEnumCreds->hMap = hMap;
+            pEnumCreds->pMapView = pMapView;
+
+            DWORD offset = 0;
+            ENUM_IDENTITY_CREDENTIALS_ITEM *root = NULL, *previous = NULL;
+            for (int i = 0; i < retVal.dwIdentities; i++)
+            {
+                ENUM_IDENTITY_CREDENTIALS_ITEM *newItem = (ENUM_IDENTITY_CREDENTIALS_ITEM *)calloc(1, sizeof(ENUM_IDENTITY_CREDENTIALS_ITEM));
+                if (root == NULL)
+                    root = newItem;
+
+                if (previous != NULL)
+                    previous->next = newItem;
+
+                LPWSTR ptr = (LPWSTR)(pMapView + offset);
+                offset += (wcslen(ptr) + 1) * sizeof(WCHAR);
+
+                newItem->szIdentity = ptr;
+                previous = newItem;
+            }
+
+            pEnumCreds->root = root;
+            pEnumCreds->current = root;
+            pEnumCreds->hServerHandle = retVal.hServerHandle;
+        }
+
+        // there is no indication of what this function is supposed to do if there are no identities? i Think
+        // from what i can tell it returns a success status, then enumerates nothing
+
+        PPEIH hEnumIdentities = (PPEIH)calloc(1, sizeof(PEIH));
+        hEnumIdentities->pEnumCreds = pEnumCreds;
+        *phEnumIdentities = hEnumIdentities;
+
+        return S_OK;
+    }
+
+    HRESULT NextIdentity(IN HENUMIDENTITY hEnum, OUT LPWSTR *pwszMemberName)
+    {
+        LOG_MESSAGE_FMT(TEXT("NextIdentity: hEnum=%08hx;"), hEnum);
+
+        if (pwszMemberName == nullptr)
+            return E_POINTER;
+
+        PENUM_IDENTITY_CREDENTIALS pEnumCreds = (PENUM_IDENTITY_CREDENTIALS)hEnum->pEnumCreds;
+        if (pEnumCreds->current == nullptr)
+            return E_ABORT;
+
+        DWORD len = wcslen(pEnumCreds->current->szIdentity);
+        LPWSTR wszMemberName = (LPWSTR)calloc(len + 1, sizeof(WCHAR));
+        wcscpy(wszMemberName, pEnumCreds->current->szIdentity);
+
+        *pwszMemberName = wszMemberName;
+        pEnumCreds->current = pEnumCreds->current->next;
+
+        return S_OK;
+    }
+
+    HRESULT CloseEnumIdentitiesHandle(IN HENUMIDENTITY hEnum)
+    {
+        LOG_MESSAGE_FMT(TEXT("CloseEnumIdentitiesHandle: hEnum=%08hx;"), hEnum);
+
+        if (hEnum == nullptr)
+        {
+            return E_INVALIDARG;
+        }
+
+        PENUM_IDENTITY_CREDENTIALS pEnumCreds = (PENUM_IDENTITY_CREDENTIALS)hEnum->pEnumCreds;
+        if (pEnumCreds->current == nullptr)
+            return S_FALSE;
+
+        PENUM_IDENTITY_CREDENTIALS_ITEM item = pEnumCreds->root;
+        do
+        {
+            if (item == NULL)
+                break;
+
+            PENUM_IDENTITY_CREDENTIALS_ITEM current = item;
+            item = current->next;
+
+            free(current);
+        } while (item != NULL);
+
+        if (pEnumCreds->pMapView != nullptr)
+            UnmapViewOfFile(pEnumCreds->pMapView);
+        if (pEnumCreds->hMap != NULL)
+            CloseHandle(pEnumCreds->hMap);
+        if (pEnumCreds->hServerHandle != 0)
+            Server_CloseEnumIdentitiesHandle(pEnumCreds->hServerHandle);
+
+        free(pEnumCreds);
+
+        return S_OK;
     }
 
     HRESULT CloseIdentityHandle(IN HIDENTITY hIdentity)
@@ -375,18 +504,6 @@ extern "C"
             LOG_STRING(szServiceName),
             algIdEncrypt,
             algIdHash);
-
-        return E_NOTIMPL;
-    }
-
-    HRESULT EnumIdentitiesWithCachedCredentials(IN LPCWSTR szCredType, OUT HENUMIDENTITY *phEnumIdentities)
-    {
-        LOG_MESSAGE_FMT(TEXT("EnumIdentitiesWithCachedCredentials: szCredType=%s;"), LOG_STRING(szCredType));
-
-        if (phEnumIdentities == nullptr || szCredType == nullptr)
-        {
-            return E_INVALIDARG;
-        }
 
         return E_NOTIMPL;
     }
@@ -785,13 +902,6 @@ extern "C"
 
         CloseHandle(hMap);
         return hr;
-    }
-
-    HRESULT NextIdentity(IN HENUMIDENTITY hEnum, OUT LPWSTR *pwszMemberName)
-    {
-        LOG_MESSAGE_FMT(TEXT("NextIdentity: hEnum=%08hx;"), hEnum);
-
-        return E_NOTIMPL;
     }
 
     HRESULT PassportFreeMemory(IN OUT void *o)

@@ -165,8 +165,6 @@ extern "C"
 
     // for zune desktop support
     // InitializeEx@29
-
-    HRESULT SerializeRSTParams(IN RSTParams *pParams, IN DWORD dwParamCount, OUT LPGUID lpgFileName, OUT HANDLE *hMappedFile, OUT DWORD *dwFileSize);
 }
 
 #ifndef UNDER_CE

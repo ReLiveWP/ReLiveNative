@@ -504,6 +504,17 @@ IOCTL_FUNC(GetIdentityPropertyByName)
 
             return S_OK;
         }
+
+        if (_wcsicmp(pArgs->szPropertyName, L"PUID") == 0)
+        {
+            // std::wstringstream stream;
+            // stream << std::hex << identity.puid;
+            // std::wstring puid(stream.str());
+
+            swprintf(pReturn->szPropertyValue, L"%016X", identity.puid);
+
+            return S_OK;
+        }
     }
 
     {

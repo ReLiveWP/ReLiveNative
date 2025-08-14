@@ -61,7 +61,9 @@ extern "C"
         CreateThread(NULL, 0, CheckForUpdatesThreadProc, NULL, 0, NULL);
         SetEvent(g_hWlidSvcReady);
 
+#ifdef UNDER_CE
         AddVectoredExceptionHandler(1, WLI_ExceptionHandler);
+#endif
 
         return TRUE;
     }

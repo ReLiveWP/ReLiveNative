@@ -9,6 +9,11 @@ add_library(msidcrl SHARED
 )
 
 target_link_libraries(msidcrl PRIVATE wlidshared ole32)
+
+if(CE_BUILD)
+target_link_libraries(msidcrl PRIVATE toolhelp)
+endif()
+
 target_link_options(msidcrl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/msidcrl.def)
 target_include_directories(msidcrl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_definitions(msidcrl PRIVATE "-DWLIDSVC_INPROC=0")
@@ -33,6 +38,11 @@ add_library(msidcrl40 SHARED
 )
 
 target_link_libraries(msidcrl40 PRIVATE libwlidsvc wlidshared ole32)
+
+if(CE_BUILD)
+target_link_libraries(msidcrl40 PRIVATE toolhelp)
+endif()
+
 target_link_options(msidcrl40 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/msidcrl.def)
 target_include_directories(msidcrl40 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_definitions(msidcrl40 PRIVATE WLIDSVC_INPROC=1)

@@ -12,11 +12,23 @@ extern "C"
     void TEST_InitHooks(void);
 #endif
 
+    class critsect_t
+    {
+    public:
+        inline critsect_t(LPCRITICAL_SECTION cs) : m_cs(cs) { EnterCriticalSection(m_cs); }
+        inline ~critsect_t() { LeaveCriticalSection(m_cs); }
+
+    private:
+        LPCRITICAL_SECTION m_cs;
+    };
+
     HRESULT Initialize(GUID *lpGuid, DWORD dwVersionMajor, DWORD dwVersionMinor)
     {
 #if WLIDSVC_INPROC
         TEST_InitHooks();
 #endif
+
+        critsect_t cs{&g_hDriverCrtiSec};
 
         IOCTL_INIT_HANDLE_ARGS args = {};
         HANDLE hEvent, hDriver;
@@ -72,17 +84,15 @@ extern "C"
 
     HRESULT Uninitialize()
     {
-        LOG_MESSAGE(TEXT("Uninitialize"));
+        critsect_t cs{&g_hDriverCrtiSec};
 
-        EnterCriticalSection(&g_hDriverCrtiSec);
+        LOG_MESSAGE(TEXT("Uninitialize"));
 
         if (g_hDriver)
         {
             CloseHandle(g_hDriver);
             g_hDriver = NULL;
         }
-
-        LeaveCriticalSection(&g_hDriverCrtiSec);
 
         return S_OK;
     }
@@ -99,6 +109,8 @@ extern "C"
         OUT OPTIONAL BYTE **ppbSessionKey,
         OUT OPTIONAL DWORD *pcbSessionKeyLength)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+
         LOG_MESSAGE_FMT(
             TEXT("AuthIdentityToService: hIdentity=0x%08hx; szServiceTarget=%s; szServicePolicy=%s; dwTokenRequestFlags=%d; szToken=0x%08hx; pdwResultFlags=0x%08hx; ppbSessionKey=0x%08hx; pcbSessionKeyLength=0x%08hx;"),
             hIdentity,
@@ -147,11 +159,11 @@ extern "C"
         if (szToken != nullptr)
         {
             auto len = wcslen(ret.szToken);
-            auto szTokenPtr = (LPWSTR)malloc((len + 1) * sizeof(WCHAR));
+            auto szTokenPtr = (LPWSTR)calloc((len + 1), sizeof(WCHAR));
             if (szTokenPtr == nullptr)
                 return E_OUTOFMEMORY;
 
-            wcsncpy(szTokenPtr, ret.szToken, 1024);
+            wcscpy(szTokenPtr, ret.szToken);
             szTokenPtr[len] = L'\0';
 
             *szToken = szTokenPtr;
@@ -196,6 +208,8 @@ extern "C"
         IN LPRSTParams pParams,
         IN DWORD dwParamCount)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+
         LOG_MESSAGE_FMT(
             TEXT("AuthIdentityToServiceEx: hIdentity=%08hx; serviceTokenFlags=%d; pParams=%08hx; dwParamCount=%d;"),
             hIdentity, serviceTokenFlags, pParams, dwParamCount);
@@ -231,6 +245,8 @@ extern "C"
 
     HRESULT CheckPasswordStrength(IN LPCWSTR szPassword, OUT PPCRL_PASSWORD_STRENGTH *pStrength)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+
         LOG_MESSAGE_FMT(TEXT("CheckPasswordStrength: dwFlags=%s;"), TEXT("REDACTED"));
 
         if (pStrength == nullptr || szPassword == nullptr)
@@ -243,6 +259,8 @@ extern "C"
 
     HRESULT CloseDeviceID(IN DWORD dwFlags, IN LPCWSTR szAdditionalParams)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+
         LOG_MESSAGE_FMT(TEXT("CloseDeviceID: dwFlags=%d; szAdditionalParams=%s;"), dwFlags, LOG_STRING(szAdditionalParams));
 
         if (dwFlags == 0 && szAdditionalParams == nullptr)
@@ -256,6 +274,8 @@ extern "C"
 
     HRESULT EnumIdentitiesWithCachedCredentials(IN LPCWSTR szCredType, OUT HENUMIDENTITY *phEnumIdentities)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+
         LOG_MESSAGE_FMT(TEXT("EnumIdentitiesWithCachedCredentials: szCredType=%s;"), LOG_STRING(szCredType));
 
         if (phEnumIdentities == nullptr || szCredType == nullptr)
@@ -338,6 +358,8 @@ extern "C"
 
     HRESULT NextIdentity(IN HENUMIDENTITY hEnum, OUT LPWSTR *pwszMemberName)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+
         LOG_MESSAGE_FMT(TEXT("NextIdentity: hEnum=%08hx;"), hEnum);
 
         if (pwszMemberName == nullptr)
@@ -359,6 +381,8 @@ extern "C"
 
     HRESULT CloseEnumIdentitiesHandle(IN HENUMIDENTITY hEnum)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("CloseEnumIdentitiesHandle: hEnum=%08hx;"), hEnum);
 
         if (hEnum == nullptr)
@@ -396,6 +420,8 @@ extern "C"
 
     HRESULT CloseIdentityHandle(IN HIDENTITY hIdentity)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("CloseIdentityHandle: hIdentity=%08hx;"), hIdentity);
 
         if (hIdentity == nullptr)
@@ -414,7 +440,7 @@ extern "C"
 
         PassportFreeMemory(hIdentity);
 
-        return hr;
+        return S_OK;
     }
 
     HRESULT CreateIdentityHandle(
@@ -422,6 +448,8 @@ extern "C"
         IN DWORD dwIdentityFlags,
         OUT HIDENTITY *phIdentity)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("CreateIdentityHandle: szMemberName=%s; dwIdentityFlags=%d;"), LOG_STRING(szMemberName), dwIdentityFlags);
 
         if (phIdentity == nullptr)
@@ -446,7 +474,7 @@ extern "C"
                                         NULL, NULL)))
             return hr;
 
-        PPIH hIdentity = (PPIH)malloc(sizeof(PIH));
+        PPIH hIdentity = (PPIH)calloc(1, sizeof(PIH));
         if (hIdentity == NULL)
             return E_OUTOFMEMORY;
 
@@ -454,7 +482,7 @@ extern "C"
 
         *phIdentity = hIdentity;
 
-        return hr;
+        return S_OK;
     }
 
     HRESULT CreateIdentityHandleFromAuthState(
@@ -462,6 +490,8 @@ extern "C"
         IN DWORD dwTokenFlags,
         OUT HIDENTITY *phIdentity)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("CreateIdentityHandle: szAuthToken=%s; dwTokenFlags=%d;"), LOG_STRING(szAuthToken), dwTokenFlags);
 
         if (phIdentity == nullptr || szAuthToken == nullptr)
@@ -480,6 +510,8 @@ extern "C"
         OUT WLIDProperty **ppProperties,
         OUT DWORD *pdwPropertyCount)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(
             TEXT("CreateLiveIDAccount: szMemberName=%s; szPassword=%s; pProperties=%08hx; dwPropertyCount=%d;"),
             LOG_STRING(szMemberName),
@@ -505,6 +537,8 @@ extern "C"
         OUT BYTE **ppbCipherText,
         OUT DWORD *pcbCipherTextLength)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(
             TEXT("EncryptWithSessionKey: hIdentity=%08hx; szServiceName=%s; algIdEncrypt=%d, algIdHash=%d; pbPlainText=%s;"),
             hIdentity,
@@ -526,6 +560,8 @@ extern "C"
         OUT LPWSTR *ppbPlainText,
         OUT DWORD *pcbPlainTextLength)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(
             TEXT("DecryptWithSessionKey: hIdentity=%08hx; szServiceName=%s; algIdEncrypt=%d, algIdHash=%d;"),
             hIdentity,
@@ -541,6 +577,8 @@ extern "C"
         IN DWORD dwFlags,
         OUT LPWSTR *szAuthToken)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("ExportAuthState: hIdentity=%08hx; dwFlags=%d;"), hIdentity, dwFlags);
 
         if (hIdentity == nullptr || szAuthToken == nullptr)
@@ -577,6 +615,8 @@ extern "C"
         OUT OPTIONAL DWORD *pdwRequestStatus,
         OUT OPTIONAL LPWSTR *szWebFlowUrl)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("GetAuthStateEx: hIdentity=%08hx; szServiceTarget=%s; pdwAuthState=%08hx; pdwAuthRequired=%08hx; pdwRequestStatus=%08hx; szWebFlowUrl=%08hx;"),
                         hIdentity,
                         LOG_STRING(szServiceTarget),
@@ -619,7 +659,7 @@ extern "C"
             if (retVal.szWebFlowUrl[0] != L'\0')
             {
                 size_t len = wcslen(retVal.szWebFlowUrl);
-                LPWSTR pszWebFlowUrl = (LPWSTR)malloc((len + 1) * sizeof(WCHAR));
+                LPWSTR pszWebFlowUrl = (LPWSTR)calloc((len + 1), sizeof(WCHAR));
                 if (pszWebFlowUrl == nullptr)
                     return E_OUTOFMEMORY;
 
@@ -634,11 +674,13 @@ extern "C"
             }
         }
 
-        return hr;
+        return S_OK;
     }
 
     HRESULT GetDefaultID(OUT LPWSTR *szDefaultID)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         IOCTL_GET_DEFAULT_ID_RETURN sData{};
         LOG_MESSAGE(TEXT("GetDefaultID"));
 
@@ -662,13 +704,13 @@ extern "C"
         }
 
         auto len = wcslen(sData.szDefaultId);
-        auto pszDefaultID = (LPWSTR)malloc((len + 1) * sizeof(WCHAR));
+        auto pszDefaultID = (LPWSTR)calloc((len + 1), sizeof(WCHAR));
         wcsncpy(pszDefaultID, sData.szDefaultId, len + 1);
         // pszDefaultID[len] = 0;
 
         *szDefaultID = pszDefaultID;
 
-        return hr;
+        return S_OK;
     }
 
     HRESULT GetDeviceId(
@@ -677,6 +719,8 @@ extern "C"
         OUT LPWSTR *pwszDeviceId,
         OUT PCCERT_CONTEXT *didCertContext)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("GetDeviceId: dwFlags=%d; pvAdditionalParams=%s; pwszDeviceId=0x%08x; didCertContext=0x%08x;"), dwFlags, LOG_STRING(pvAdditionalParams), pwszDeviceId, didCertContext);
 
         return E_NOTIMPL;
@@ -688,6 +732,8 @@ extern "C"
         OUT DWORD *pdwErrorCode,
         OUT LPWSTR *szErrorBlob)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("GetExtendedError: hIdentity=%08hx;"), hIdentity);
 
         if (hIdentity == nullptr || pdwErrorCategory == nullptr || pdwErrorCode == nullptr ||
@@ -703,6 +749,8 @@ extern "C"
         IN LPCWSTR szPropertyName,
         OUT LPWSTR *szPropertyValue)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("GetExtendedProperty: szPropertyName=%s;"), LOG_STRING(szPropertyName));
 
         if (szPropertyName == nullptr || szPropertyValue == nullptr)
@@ -718,6 +766,8 @@ extern "C"
         IN LPCWSTR szUnknown1,
         OUT LPWSTR *szChallenge)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("GetHIPChallenge: hIdentity=%08hx; szUnknown1=%s;"), hIdentity, LOG_STRING(szUnknown1));
 
         if (hIdentity == nullptr || szUnknown1 == nullptr || szChallenge == nullptr)
@@ -735,6 +785,8 @@ extern "C"
         IN LPCWSTR szPropertyName,
         OUT LPWSTR *szPropertyValue)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("GetIdentityPropertyByName: hIdentity=%08hx; szPropertyName=%s;"), hIdentity, LOG_STRING(szPropertyName));
 
         if (hIdentity == nullptr || szPropertyName == nullptr || szPropertyValue == nullptr)
@@ -749,8 +801,6 @@ extern "C"
         args.hIdentity = hIdentity->hIdentitySrv;
         if (szPropertyName != nullptr)
             wcsncpy(args.szPropertyName, szPropertyName, 128);
-        else
-            memset(args.szPropertyName, 0, 128 * sizeof(WCHAR));
 
         if (FAILED(hr = DeviceIoControl(g_hDriver,
                                         IOCTL_WLIDSVC_GET_IDENTITY_PROPERTY_BY_NAME,
@@ -766,42 +816,46 @@ extern "C"
             return S_FALSE;
         }
 
-        auto pszPropertyValue = (LPWSTR)malloc((len + 1) * sizeof(WCHAR));
+        auto pszPropertyValue = (LPWSTR)calloc((len + 1), sizeof(WCHAR));
         if (pszPropertyValue == nullptr)
             return E_OUTOFMEMORY;
 
-        wcsncpy(pszPropertyValue, retVal.szPropertyValue, len + 1);
+        wcscpy(pszPropertyValue, retVal.szPropertyValue);
         pszPropertyValue[len] = L'\0';
 
         *szPropertyValue = pszPropertyValue;
 
-        return E_NOTIMPL;
+        return S_OK;
     }
 
     HRESULT GetLiveEnvironment(OUT DWORD *pdwEnvironment)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE(TEXT("GetLiveEnvironment"));
         if (pdwEnvironment == nullptr)
         {
             return E_INVALIDARG;
         }
 
-        HRESULT hr = S_OK;
-        IOCTL_GET_LIVE_ENVIRONMENT_RETURN retVal{};
-        if (FAILED(hr = DeviceIoControl(g_hDriver,
-                                        IOCTL_WLIDSVC_GET_LIVE_ENVIRONMENT,
-                                        NULL, 0,
-                                        &retVal, sizeof(IOCTL_GET_LIVE_ENVIRONMENT_RETURN),
-                                        NULL, NULL)))
-            return hr;
+        // HRESULT hr = S_OK;
+        // IOCTL_GET_LIVE_ENVIRONMENT_RETURN retVal{};
+        // if (FAILED(hr = DeviceIoControl(g_hDriver,
+        //                                 IOCTL_WLIDSVC_GET_LIVE_ENVIRONMENT,
+        //                                 NULL, 0,
+        //                                 &retVal, sizeof(IOCTL_GET_LIVE_ENVIRONMENT_RETURN),
+        //                                 NULL, NULL)))
+        //     return hr;
 
-        *pdwEnvironment = retVal.dwLiveEnv;
+        *pdwEnvironment = 0;
 
         return S_OK;
     }
 
     HRESULT GetPassword(IN LPCWSTR szUnk1, OUT LPWSTR *pwszUnk2)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("GetPassword: szUnk1=%s;"), LOG_STRING(szUnk1));
 
         if (szUnk1 == nullptr || pwszUnk2 == nullptr)
@@ -821,6 +875,8 @@ extern "C"
         IN LPCWSTR wszChallenge,
         OUT LPWSTR *pwszResponse)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("GetResponseForHttpChallenge: hIdentity=%08hx; dwAuthFlags=%d; dwSSOFlags=%d; pcUIParam=%08hx; wszServiceTarget=%s; wszChallenge=%s;"),
                         hIdentity,
                         dwAuthFlags,
@@ -840,6 +896,8 @@ extern "C"
 
     HRESULT GetUserExtendedProperty(IN LPCWSTR userName, IN LPCWSTR propertyName, OUT LPWSTR *propertyValue)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("GetUserExtendedProperty: userName=%s; propertyName=%s;"), LOG_STRING(userName), LOG_STRING(propertyName));
 
         if (userName == nullptr || propertyName == nullptr || propertyValue == nullptr)
@@ -859,6 +917,8 @@ extern "C"
         OUT LPWSTR *pwszWebAuthUrl,
         OUT LPWSTR *pwszPostData)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("GetWebAuthUrlEx: hIdentity=%08hx; dwWebAuthFlag=%d; szTargetServiceName=%s; szServicePolicy=%s; szAdditionalPostParams=%s;"),
                         hIdentity,
                         dwWebAuthFlag,
@@ -871,6 +931,8 @@ extern "C"
 
     HRESULT HasPersistedCredential(IN HIDENTITY hIdentity, IN LPCWSTR szCredType, OUT BOOL *bHasPersistentCred)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("HasPersistedCredential: hIdentity=%08hx; szCredType=%s;"),
                         hIdentity,
                         LOG_STRING(szCredType));
@@ -879,6 +941,8 @@ extern "C"
 
     HRESULT HasSetCredential(IN HIDENTITY hIdentity, OUT BOOL *bHasSetCred)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("HasPersistedCredential: hIdentity=%08hx;"), hIdentity);
         return E_NOTIMPL;
     }
@@ -890,6 +954,8 @@ extern "C"
         IN OPTIONAL RSTParams *pcRSTParams,
         IN OPTIONAL DWORD dwpcRSTParamsCount)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("LogonIdentityEx: hIdentity=%08hx; szAuthPolicy=%s; dwAuthFlags=%d, pcRSTParams=%08hx; dwpcRSTParamsCount=%d"),
                         hIdentity,
                         LOG_STRING(szAuthPolicy),
@@ -906,8 +972,6 @@ extern "C"
         args.hIdentity = hIdentity->hIdentitySrv;
         if (szAuthPolicy != nullptr)
             wcsncpy(args.szAuthPolicy, szAuthPolicy, 256);
-        else
-            memset(args.szAuthPolicy, 0, 256 * sizeof(WCHAR));
 
         args.dwAuthFlags = dwAuthFlags;
         args.dwParamCount = dwpcRSTParamsCount;
@@ -934,8 +998,10 @@ extern "C"
 
     HRESULT PassportFreeMemory(IN OUT void *o)
     {
-        LOG_MESSAGE_FMT(TEXT("PassportFreeMemory: o=0x%08x;"), o);
+        critsect_t cs{&g_hDriverCrtiSec};
         
+        LOG_MESSAGE_FMT(TEXT("PassportFreeMemory: o=0x%08x;"), o);
+
         if (o == nullptr)
             return S_FALSE;
 
@@ -945,6 +1011,8 @@ extern "C"
 
     HRESULT PersistCredential(IN HIDENTITY hIdentity, IN LPCWSTR lpCredType)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("PersistCredential: hIdentity=%08hx; lpCredType=%s;"), hIdentity, LOG_STRING(lpCredType));
 
         IOCTL_PERSIST_CREDENTIAL_ARGS args{};
@@ -968,13 +1036,17 @@ extern "C"
 
     HRESULT RemovePersistedCredential(IN HIDENTITY hIdentity, IN LPCWSTR lpCredType)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("RemovePersistedCredential: hIdentity=%08hx; lpCredType=%s;"), hIdentity, LOG_STRING(lpCredType));
         return E_NOTIMPL;
     }
 
-    HRESULT SetCredential(IN HIDENTITY hIdentity, IN LPCWSTR szCredType, IN LPCWSTR szCredValue)
+    HRESULT WINAPI SetCredential(IN HIDENTITY hIdentity, IN LPCWSTR szCredType, IN LPCWSTR szCredValue)
     {
-        LOG_MESSAGE_FMT(TEXT("SetCredential: hIdentity=%08hx; szCredType=%s; szCredValue=%s;"), hIdentity, LOG_STRING(szCredType));
+        critsect_t cs{&g_hDriverCrtiSec};
+        
+        LOG_MESSAGE_FMT(TEXT("SetCredential: hIdentity=%08hx; szCredType=%s; szCredValue=%s;"), hIdentity, LOG_STRING(szCredType), LOG_STRING(szCredValue));
 
         if (hIdentity == nullptr || szCredType == nullptr || szCredValue == nullptr)
         {
@@ -999,12 +1071,16 @@ extern "C"
 
     HRESULT SetExtendedProperty(IN LPCWSTR szPropertyName, IN LPCWSTR szPropertyValue)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("SetExtendedProperty: szPropertyName=%s; szPropertyValue=%s;"), LOG_STRING(szPropertyName), LOG_STRING(szPropertyValue));
         return E_NOTIMPL;
     }
 
     HRESULT SetHIPSolution(IN LPVOID lpUnk1, IN LPCWSTR lpUnk2, IN LPCWSTR lpUnk3)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("SetHIPSolution: lpUnk1=%08hx; lpUnk2=%s; lpUnk3=%s;"), lpUnk1, LOG_STRING(lpUnk2), LOG_STRING(lpUnk3));
         return E_NOTIMPL;
     }
@@ -1014,12 +1090,16 @@ extern "C"
         PPCRL_IDENTITY_PROPERTY Property,
         IN LPCWSTR szPropertyValue)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("SetIdentityProperty: hIdentity=%08hx; Property=%d, szPropertyValue=%s;"), hIdentity, Property, LOG_STRING(szPropertyValue));
         return E_NOTIMPL;
     }
 
     HRESULT SetLiveEnvironment(DWORD dwLiveEnvironment)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("SetLiveEnvironment: dwLiveEnvironment=%d;"), dwLiveEnvironment);
         return E_NOTIMPL;
     }
@@ -1029,6 +1109,8 @@ extern "C"
         IN LPCWSTR szPropertyName,
         IN LPCWSTR szPropertyValue)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        
         LOG_MESSAGE_FMT(TEXT("SetIdentityProperty: szUserName=%s; szPropertyName=%s, szPropertyValue=%s;"), LOG_STRING(szUserName), LOG_STRING(szPropertyName), LOG_STRING(szPropertyValue));
         return E_NOTIMPL;
     }
@@ -1039,6 +1121,9 @@ extern "C"
         LPCWSTR szUnk2,
         int iUnk3)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        LOG_MESSAGE(TEXT("WSAccrueProfile"));
+        
         return E_NOTIMPL;
     }
 
@@ -1048,6 +1133,9 @@ extern "C"
         IN LPCWSTR szUnk2,
         DWORD dwUnk3)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        LOG_MESSAGE(TEXT("WSChangePassword"));
+        
         return E_NOTIMPL;
     }
 
@@ -1056,6 +1144,9 @@ extern "C"
         IN LPCWSTR szUnk1,
         IN LPCWSTR szUnk2)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        LOG_MESSAGE(TEXT("WSChangeSQSA"));
+        
         return E_NOTIMPL;
     }
 
@@ -1064,11 +1155,17 @@ extern "C"
         OUT LPWSTR *pwszUnk2,
         OUT LPWSTR *pwszUnk3)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        LOG_MESSAGE(TEXT("WSGetHIPImage"));
+        
         return E_NOTIMPL;
     }
 
     HRESULT WSResolveHIP(IN LPVOID lpUnk1, IN HIDENTITY *hIdentity, LPCWSTR szUnk2)
     {
+        critsect_t cs{&g_hDriverCrtiSec};
+        LOG_MESSAGE(TEXT("WSResolveHIP"));
+        
         return E_NOTIMPL;
     }
 }

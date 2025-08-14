@@ -14,6 +14,8 @@ set(CMAKE_C_STANDARD_LIBRARIES "")
 set(CMAKE_CXX_STANDARD_LIBRARIES "")
 set(CMAKE_REQUIRED_LIBRARIES "coredll")
 
+set(CE_BUILD 1)
+
 # enforce -Os, we need the memory footprint to be as small as possible
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Os")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Os")

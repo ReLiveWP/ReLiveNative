@@ -14,7 +14,8 @@
                 "_UNICODE",
                 "_WIN32_WCE=0x700",
                 "__GNUC__",
-                "__COREDLL__"
+                "__COREDLL__",
+                "ARM"
             ],
             "compilerPath": "/opt/cegcc/bin/arm-mingw32ce-gcc",
             "cStandard": "c11",

@@ -87,6 +87,8 @@ extern "C"
         return S_OK;
     }
 
+#define PPCRL_S_TOKEN_TYPE_DOES_NOT_SUPPORT_SESSION_KEY 0x48861
+
     HRESULT AuthIdentityToService(
         IN HIDENTITY hIdentity,
         IN LPCWSTR szServiceTarget,
@@ -115,7 +117,8 @@ extern "C"
 
         if (ppbSessionKey != nullptr || pcbSessionKeyLength != nullptr)
         {
-            return E_NOTIMPL;
+            LOG_MESSAGE(TEXT("AuthIdentityToService requested ppbSessionKey and idk what that does yet so"));
+            // return E_NOTIMPL;
         }
 
         HRESULT hr;
@@ -157,6 +160,31 @@ extern "C"
         if (pdwResultFlags != nullptr)
         {
             *pdwResultFlags = ret.dwResultFlags;
+        }
+
+        if (ppbSessionKey != nullptr)
+        {
+            // auto len = wcslen(ret.szToken);
+            // auto szTokenPtr = (LPWSTR)malloc((len + 1) * sizeof(WCHAR));
+            // if (szTokenPtr == nullptr)
+            //     return E_OUTOFMEMORY;
+
+            // wcsncpy(szTokenPtr, ret.szToken, 1024);
+            // szTokenPtr[len] = L'\0';
+
+            // *ppbSessionKey = (LPBYTE)szTokenPtr;
+            // if (pcbSessionKeyLength != nullptr)
+            //     *pcbSessionKeyLength = (len) * sizeof(WCHAR);
+
+            // unconvinced these are ever correctly set??
+            *ppbSessionKey = NULL;
+
+            // return PPCRL_S_TOKEN_TYPE_DOES_NOT_SUPPORT_SESSION_KEY;
+        }
+
+        if (pcbSessionKeyLength != nullptr)
+        {
+            *pcbSessionKeyLength = 0;
         }
 
         return S_OK;
@@ -906,6 +934,8 @@ extern "C"
 
     HRESULT PassportFreeMemory(IN OUT void *o)
     {
+        LOG_MESSAGE_FMT(TEXT("PassportFreeMemory: o=0x%08x;"), o);
+        
         if (o == nullptr)
             return S_FALSE;
 
@@ -944,7 +974,7 @@ extern "C"
 
     HRESULT SetCredential(IN HIDENTITY hIdentity, IN LPCWSTR szCredType, IN LPCWSTR szCredValue)
     {
-        LOG_MESSAGE_FMT(TEXT("SetCredential: hIdentity=%08hx; szCredType=%s; szCredValue=REDACTED;"), hIdentity, LOG_STRING(szCredType));
+        LOG_MESSAGE_FMT(TEXT("SetCredential: hIdentity=%08hx; szCredType=%s; szCredValue=%s;"), hIdentity, LOG_STRING(szCredType));
 
         if (hIdentity == nullptr || szCredType == nullptr || szCredValue == nullptr)
         {

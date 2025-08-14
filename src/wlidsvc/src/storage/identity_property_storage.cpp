@@ -4,7 +4,7 @@
 
 namespace wlidsvc::storage
 {
-    identity_property_store_t::identity_property_store_t(const std::wstring &path, const std::string &identity, bool is_readonly)
+    identity_token_store_t::identity_token_store_t(const std::wstring &path, const std::string &identity, bool is_readonly)
         : base_store_t(path, is_readonly), identity(identity)
     {
         if (is_readonly)
@@ -17,7 +17,7 @@ namespace wlidsvc::storage
         }
     }
 
-    bool identity_property_store_t::set(const std::string &key, const std::string &value)
+    bool identity_token_store_t::set(const std::string &key, const std::string &value)
     {
         if (is_readonly)
         {
@@ -50,7 +50,7 @@ namespace wlidsvc::storage
         return true;
     }
 
-    bool identity_property_store_t::get(const std::string &key, std::string &value)
+    bool identity_token_store_t::get(const std::string &key, std::string &value)
     {
         const char *sql = "SELECT propvalue FROM identity_properties WHERE identity = ? AND propkey = ?;";
         sqlite3_stmt *stmt;
@@ -70,7 +70,7 @@ namespace wlidsvc::storage
         return false;
     }
 
-    bool identity_property_store_t::find_identities_for_credential_type(const std::wstring credential_type, std::vector<std::wstring> &identities)
+    bool identity_token_store_t::find_identities_for_credential_type(const std::wstring credential_type, std::vector<std::wstring> &identities)
     {
         const char *sql = "SELECT identity FROM identity_properties WHERE propkey = ?;";
         sqlite3_stmt *stmt;

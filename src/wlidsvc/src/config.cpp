@@ -89,6 +89,8 @@ namespace wlidsvc::config
 
     const environment_t environment()
     {
+        return environment_t::production;
+        
 #ifdef IS_PRODUCTION_BUILD
         return environment_t::production;
 #else

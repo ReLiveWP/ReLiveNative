@@ -12,7 +12,8 @@ namespace wlidsvc
           is_authenticated(false),
           curl_multi(nullptr),
           sqlite(nullptr),
-          credentials()
+          credentials(),
+          use_sts_token(true)
     {
         curl_multi = curl_multi_init();
     }

@@ -42,6 +42,7 @@ namespace wlidsvc
         bool is_authenticated;
         DWORD flags;
 
+        bool use_sts_token;
         std::map<std::wstring, std::wstring> credentials;
 
         CURLM *curl_multi;

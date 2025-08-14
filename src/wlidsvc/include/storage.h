@@ -130,11 +130,11 @@ namespace wlidsvc::storage
         // todo: C++ iterators seem like hell
     };
 
-    class identity_property_store_t : protected base_store_t
+    class identity_token_store_t : protected base_store_t
     {
     public:
-        identity_property_store_t(const std::wstring &path, const std::string &identity, bool is_readonly = false);
-        ~identity_property_store_t() = default;
+        identity_token_store_t(const std::wstring &path, const std::string &identity, bool is_readonly = false);
+        ~identity_token_store_t() = default;
 
         bool set(const std::string &key, const std::string &value);
         bool get(const std::string &key, std::string &value);

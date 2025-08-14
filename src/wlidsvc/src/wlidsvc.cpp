@@ -18,6 +18,15 @@ using namespace wlidsvc::storage;
 
 extern "C"
 {
+    LONG WINAPI WLI_ExceptionHandler(struct _EXCEPTION_POINTERS *pExceptionInfo)
+    {
+        LOG("Is this thing on?? ExceptionHandler called in service!!! ExceptionCode=0x%08x; ExceptionAddress=0x%08x; ExceptionInformation0x%08x;",
+            pExceptionInfo->ExceptionRecord->ExceptionCode,
+            pExceptionInfo->ExceptionRecord->ExceptionAddress,
+            pExceptionInfo->ExceptionRecord->ExceptionInformation);
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+
     extern void init_errno(void);
     DWORD_PTR WLI_Init(DWORD_PTR hContext)
     {
@@ -51,6 +60,8 @@ extern "C"
 
         CreateThread(NULL, 0, CheckForUpdatesThreadProc, NULL, 0, NULL);
         SetEvent(g_hWlidSvcReady);
+
+        AddVectoredExceptionHandler(1, WLI_ExceptionHandler);
 
         return TRUE;
     }

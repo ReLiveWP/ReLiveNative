@@ -127,34 +127,30 @@ HRESULT serialise_logon_request(identity_ctx_t *identityCtx, const std::string &
     json credentials = json::object();
     for (auto &&credential : identityCtx->credentials)
     {
-        // some service seems to pass a set of asterisks equal to the length of the password in place _of_ the password
-        // and then attempt to login. this, naturally, fails, but RST2.srf seemed to be fine with it. for the sake of
-        // not adding a big easy backdoor to my shit, we're gonna use cached credentials instead
-        if (credential.first == L"ps:password" && credential.second.find_first_not_of('*') == std::wstring::npos)
-        {
-            std::string credentialType = "ps:password";
-            std::string credential{};
-            identity_property_store_t ps{storage::db_path(), util::wstring_to_utf8(identityCtx->member_name), true};
-            if (ps.get(credentialType, credential))
-                credentials[credentialType] = credential;
-        }
-        else
-        {
+        if (!(credential.first == L"ps:password" && credential.second.find_first_not_of('*') == std::wstring::npos))
             credentials[util::wstring_to_utf8(credential.first)] = util::wstring_to_utf8(credential.second);
-        }
     }
 
     if (credentials.size() == 0)
     {
-        LOG("No credentials set for identity %s", util::wstring_to_utf8(identityCtx->member_name).c_str());
-        return PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL;
+        if (identityCtx->use_sts_token)
+        {
+            token_t token;
+            token_store_t token_store{storage::db_path()};
+            if (!token_store.retrieve(identityCtx->member_name, L"http://Passport.NET/tb", token))
+            {
+                LOG("No credentials set for identity %s, attempted to use Passport.NET, it doesn't exist.", util::wstring_to_utf8(identityCtx->member_name).c_str());
+                return PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL;
+            }
+        }
+        else
+        {
+            LOG("No credentials set for identity %s", util::wstring_to_utf8(identityCtx->member_name).c_str());
+            return PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL;
+        }
     }
 
     json token_requests = json::array();
-    token_requests.push_back({
-        {"service_target", "http://Passport.NET/tb"},
-        {"service_policy", auth_policy},
-    });
 
     LPBYTE pBuffer = nullptr;
     RSTParams *pParams = nullptr;
@@ -175,6 +171,14 @@ HRESULT serialise_logon_request(identity_ctx_t *identityCtx, const std::string &
     }
 
     delete[] pBuffer;
+
+    if (token_requests.size() == 0)
+    {
+        token_requests.push_back({
+            {"service_target", "http://Passport.NET/tb"},
+            {"service_policy", auth_policy},
+        });
+    }
 
     json logon_data = {
         {"identity", util::wstring_to_utf8(identityCtx->member_name)},
@@ -503,7 +507,7 @@ IOCTL_FUNC(GetIdentityPropertyByName)
     }
 
     {
-        identity_property_store_t ps{storage::db_path(), member_name_utf8, true};
+        identity_token_store_t ps{storage::db_path(), member_name_utf8, true};
         std::wstring value{};
 
         if (!ps.get(pReturn->szPropertyValue, value))
@@ -533,6 +537,9 @@ IOCTL_FUNC(SetCredential)
 
     identityCtx->credentials[credentialType] = credentialValue;
 
+    if (credentialType == L"ps:password" && credentialValue.find_first_not_of('*') == std::wstring::npos)
+        identityCtx->use_sts_token = true;
+
     LOG("SetCredential: hIdentity=0x%08hx; szCredentialType=%s; szCredential=REDACTED;",
         pArgs->hIdentity, util::wstring_to_utf8(credentialType).c_str());
 
@@ -559,7 +566,7 @@ IOCTL_FUNC(PersistCredential)
 
     auto credential = cred->second;
 
-    identity_property_store_t ps{storage::db_path(), util::wstring_to_utf8(identityCtx->member_name)};
+    identity_token_store_t ps{storage::db_path(), util::wstring_to_utf8(identityCtx->member_name)};
     if (!ps.set(credentialType, credential))
         return E_FAIL;
 
@@ -586,7 +593,15 @@ IOCTL_FUNC(GetAuthStateEx)
     if (identityCtx == nullptr)
         return E_INVALIDARG;
 
-    if (identityCtx->is_authenticated)
+    if (identityCtx->member_name.empty())
+        return PPCRL_E_NO_MEMBER_NAME_SET;
+
+    auto len = wcslen(pArgs->szServiceTarget);
+    auto target = len != 0 ? std::wstring(pArgs->szServiceTarget) : L"http://Passport.NET/tb";
+
+    token_t token;
+    token_store_t ts{storage::db_path()};
+    if (ts.retrieve(identityCtx->member_name, target, token))
     {
         pReturn->dwAuthState = AUTHENTICATED_USING_PASSWORD;
         pReturn->dwAuthRequired = 0;
@@ -663,7 +678,7 @@ IOCTL_FUNC(AuthIdentityToService)
         std::string credentialType = "ps:password";
         std::string credential{};
 
-        identity_property_store_t ps{storage::db_path(), util::wstring_to_utf8(identityCtx->member_name), true};
+        identity_token_store_t ps{storage::db_path(), util::wstring_to_utf8(identityCtx->member_name), true};
         if (!ps.get(credentialType, credential))
             return E_FAIL;
 
@@ -685,8 +700,17 @@ IOCTL_FUNC(AuthIdentityToService)
 
     LOG("AuthIdentityToService data: %s", logon_data_str.c_str());
 
+    std::vector<std::string> additional_headers{};
+    if (identityCtx->use_sts_token)
+    {
+        token_t token;
+        token_store_t token_store{storage::db_path()};
+        if (token_store.retrieve(identityCtx->member_name, L"http://Passport.NET/tb", token))
+            additional_headers.push_back("Authorization: Bearer " + token.token);
+    }
+
     net::client_t client{};
-    net::result_t result = client.post(rst_endpoint, logon_data_str, "application/json");
+    net::result_t result = client.post(rst_endpoint, logon_data_str, "application/json", additional_headers);
     if (result.curl_error != CURLE_OK)
     {
         return HRESULT_FROM_CURLE(result.curl_error);
@@ -747,8 +771,17 @@ IOCTL_FUNC(AuthIdentityToServiceEx)
 
     LOG("LogonIdentityEx data: %s", data.c_str());
 
+    std::vector<std::string> additional_headers{};
+    if (identityCtx->use_sts_token)
+    {
+        token_t token;
+        token_store_t token_store{storage::db_path()};
+        if (token_store.retrieve(identityCtx->member_name, L"http://Passport.NET/tb", token))
+            additional_headers.push_back("Authorization: Bearer " + token.token);
+    }
+
     net::client_t client{};
-    net::result_t result = client.post(rst_endpoint, data, "application/json");
+    net::result_t result = client.post(rst_endpoint, data, "application/json", additional_headers);
     if (result.curl_error != CURLE_OK)
     {
         return HRESULT_FROM_CURLE(result.curl_error);
@@ -817,8 +850,17 @@ IOCTL_FUNC(LogonIdentityEx)
 
     LOG("LogonIdentityEx data: %s", data.c_str());
 
+    std::vector<std::string> additional_headers{};
+    if (identityCtx->use_sts_token)
+    {
+        token_t token;
+        token_store_t token_store{storage::db_path()};
+        if (token_store.retrieve(identityCtx->member_name, L"http://Passport.NET/tb", token))
+            additional_headers.push_back("Authorization: Bearer " + token.token);
+    }
+
     net::client_t client{};
-    net::result_t result = client.post(rst_endpoint, data, "application/json");
+    net::result_t result = client.post(rst_endpoint, data, "application/json", additional_headers);
     if (result.curl_error != CURLE_OK)
     {
         return HRESULT_FROM_CURLE(result.curl_error);
@@ -853,7 +895,7 @@ IOCTL_FUNC(EnumIdentitiesWithCachedCredentials)
     std::wstring credentialType{pArgs->szCredType};
     std::vector<std::wstring> identities;
 
-    identity_property_store_t ps{storage::db_path(), ""};
+    identity_token_store_t ps{storage::db_path(), ""};
     if (!ps.find_identities_for_credential_type(credentialType, identities))
         return E_FAIL;
 

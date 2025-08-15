@@ -8,6 +8,22 @@
 
 typedef void CURL;
 
+static inline char *wchar_to_char(const wchar_t *fmt)
+{
+    // codecvt bloats the binary size by i shit you not over 500kb
+    size_t length = ::wcslen(fmt);
+    int dwLength = WideCharToMultiByte(CP_UTF8, 0, fmt, length, NULL, 0, NULL, NULL);
+
+    char *tmp = new (std::nothrow) char[dwLength + 1];
+    if (tmp == nullptr)
+        return nullptr;
+
+    WideCharToMultiByte(CP_UTF8, 0, fmt, length, tmp, dwLength, NULL, NULL);
+    tmp[dwLength] = '\0';
+
+    return tmp;
+}
+
 #ifndef STRINGIZE
 #define STRINGIZE(x) STRINGIZE2(x)
 #define STRINGIZE2(x) #x
@@ -33,7 +49,6 @@ typedef void CURL;
         wlidsvc::log::info().log(__FILE__ " " LINE_STRING " ASSERTION FAILED: " #x); \
         return E_INVALIDARG;                                                         \
     }
-#endif
 
 #define WINDOWS_TICK 10000
 #define SEC_TO_UNIX_EPOCH 11644473600000LL
@@ -42,22 +57,6 @@ static inline __time64_t filetime_to_time(const FILETIME &ft)
     long long ms = ((*(LONGLONG *)&(ft)) / WINDOWS_TICK) - SEC_TO_UNIX_EPOCH;
     __time64_t t = (__time64_t)ms;
     return t;
-}
-
-static inline char *wchar_to_char(const wchar_t *fmt)
-{
-    // codecvt bloats the binary size by i shit you not over 500kb
-    size_t length = ::wcslen(fmt);
-    int dwLength = WideCharToMultiByte(CP_UTF8, 0, fmt, length, NULL, 0, NULL, NULL);
-
-    char *tmp = new (std::nothrow) char[dwLength + 1];
-    if (tmp == nullptr)
-        return nullptr;
-
-    WideCharToMultiByte(CP_UTF8, 0, fmt, length, tmp, dwLength, NULL, NULL);
-    tmp[dwLength] = '\0';
-
-    return tmp;
 }
 
 namespace wlidsvc::log
@@ -205,7 +204,7 @@ namespace wlidsvc::log
 
         static DWORD thread_proc(IN LPVOID lpParameter);
 
-        logqueue_t<2048> queue_;
+        logqueue_t<256> queue_;
         HANDLE hThread_;
         logger_thread_state_t state_;
         CRITICAL_SECTION init_cs;
@@ -215,3 +214,4 @@ namespace wlidsvc::log
 
     extern logger_t &info();
 }
+#endif

@@ -36,10 +36,12 @@ namespace wlidsvc
     handle_ctx_t::handle_ctx_t(DWORD _hThis)
         : hThis(_hThis), major_version(0), minor_version(0), exec_path(L""), associated_identities()
     {
+        InitializeCriticalSection(&cs);
     }
 
     handle_ctx_t::~handle_ctx_t()
     {
+        DeleteCriticalSection(&cs);
         for (auto identity : associated_identities)
         {
             delete identity;

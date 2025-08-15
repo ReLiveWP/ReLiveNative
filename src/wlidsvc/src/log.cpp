@@ -1,4 +1,6 @@
 #include "log.h"
+#ifndef NO_LOGGING
+
 #include "util.h"
 #include "config.h"
 
@@ -139,12 +141,12 @@ namespace wlidsvc::log
                     }
                 }
 
-                Sleep(1000);
+                Sleep(10000);
                 break;
             }
             case logger_thread_state_t::cleanup:
             {
-                Sleep(5000);
+                Sleep(60000);
                 self->log("Resetting logger...");
 
                 if (self->curl_ != NULL)
@@ -161,3 +163,4 @@ namespace wlidsvc::log
         return 0;
     }
 }
+#endif

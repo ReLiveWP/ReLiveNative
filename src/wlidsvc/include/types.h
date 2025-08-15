@@ -53,6 +53,8 @@ namespace wlidsvc
     {
         handle_ctx_t(DWORD _hThis);
         ~handle_ctx_t();
+        
+        CRITICAL_SECTION cs;
 
         DWORD hThis;
         GUID app;

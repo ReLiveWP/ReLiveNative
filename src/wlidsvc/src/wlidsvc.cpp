@@ -98,6 +98,12 @@ extern "C"
                        DWORD dwLenIn, PBYTE pBufOut, DWORD dwLenOut,
                        PDWORD pdwActualOut)
     {
+        if (hContext == 0)
+            return FALSE;
+
+        auto hCtx = (wlidsvc::handle_ctx_t *)hContext;
+        util::critsect_t cs{&hCtx->cs};
+
         BEGIN_IOCTL_MAP()
         IOCTL_HANDLER_NO_LOG(IOCTL_WLIDSVC_LOG_MESSAGE, WLI_HandleLogMessage)
         IOCTL_HANDLER_NO_LOG(IOCTL_WLIDSVC_LOG_MESSAGE_WIDE, WLI_HandleLogMessageWide)
@@ -116,6 +122,7 @@ extern "C"
         IOCTL_HANDLER(IOCTL_WLIDSVC_ENUM_IDENTITIES_WITH_CACHED_CREDENTIALS, WLI_EnumIdentitiesWithCachedCredentials);
         IOCTL_HANDLER(IOCTL_WLIDSVC_CLOSE_ENUM_IDENTITIES_HANDLE, WLI_CloseEnumIdentitiesHandle);
         END_IOCTL_MAP()
+
         return FALSE;
     }
 

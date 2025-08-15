@@ -4,6 +4,9 @@ This repository contains a set of native binaries built to replace the Windows L
 - `wlidsvc.dll`/`msidcrl.dll` combination for injection into Windows Phone 7 ROMs
 - `msidcrl40.dll` to load into the Zune Desktop app.
 
+> [!CAUTION]
+> If you are an end-user of ReLiveWP, this repository is of no interest to you. Please download a ROM through official channels.
+
 # Building
 Included is all required source code and toolchain files, but no signing certificates. You will have to generate these yourself if you wish to deploy these binaries to your devices for testing. In future, test certificates may be provided to aid development efforts.
 

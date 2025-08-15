@@ -94,7 +94,6 @@ HRESULT DeserializeRSTParams(GUID gMapParams, DWORD dwSize, LPBYTE *ppBuffer, RS
     CloseHandle(hMap);
 
     // first 4 bytes are the total size, next 4 bytes are the parameter count
-    HRESULT hr = E_NOTIMPL;
     DWORD dwParamCount = *(DWORD *)(pBuffer + 4);
     RSTParams *pParams = reinterpret_cast<RSTParams *>(pBuffer + 8);
     for (int i = 0; i < dwParamCount; ++i)
@@ -534,6 +533,29 @@ IOCTL_FUNC(GetIdentityPropertyByName)
     return S_FALSE;
 }
 
+IOCTL_FUNC(SetIdentityProperty)
+{
+    VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_SET_IDENTITY_PROPERTY_ARGS));
+
+    auto *pArgs = reinterpret_cast<PIOCTL_SET_IDENTITY_PROPERTY_ARGS>(pBufIn);
+    auto *identityCtx = reinterpret_cast<identity_ctx_t *>(pArgs->hIdentity);
+    if (identityCtx == nullptr)
+        return E_INVALIDARG;
+
+    auto property = std::wstring(pArgs->szProperty);
+    LOG("SetIdentityProperty: hIdentity=0x%08hx; dwProperty=%d; szProperty=%s;",
+        pArgs->hIdentity, pArgs->dwProperty, util::wstring_to_utf8(property).c_str());
+
+    switch (pArgs->dwProperty)
+    {
+    case 1: // IDENTITY_MEMBER_NAME
+        identityCtx->member_name = property;
+        break;
+    }
+
+    return S_OK;
+}
+
 IOCTL_FUNC(SetCredential)
 {
     VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_SET_CREDENTIAL_ARGS));
@@ -667,22 +689,22 @@ IOCTL_FUNC(AuthIdentityToService)
 
     HRESULT hr;
     // ensuring we have a client configuration, this will kickoff the download and wait for it to complete
-    if (FAILED(hr = config::init_client_config()))
-    {
-        LOG("Failed to initialize client configuration: 0x%08x", hr);
-        return hr;
-    }
+    // if (FAILED(hr = config::init_client_config()))
+    // {
+    //     LOG("Failed to initialize client configuration: 0x%08x", hr);
+    //     return hr;
+    // }
 
-    std::string rst_endpoint;
-    {
-        config_store_t cs{config::client_config_db_path()};
-        rst_endpoint = cs.get(g_endpointRequestSecurityTokens);
-        if (rst_endpoint.empty())
-        {
-            LOG("%s", "RST endpoint is not configured, this should never happen!!");
-            return E_UNEXPECTED;
-        }
-    }
+    std::string rst_endpoint = g_requestTokensEndpoint;
+    // {
+    //     config_store_t cs{config::client_config_db_path()};
+    //     rst_endpoint = cs.get(g_endpointRequestSecurityTokens);
+    //     if (rst_endpoint.empty())
+    //     {
+    //         LOG("%s", "RST endpoint is not configured, this should never happen!!");
+    //         return E_UNEXPECTED;
+    //     }
+    // }
 
     std::string logon_data_str;
     {
@@ -709,7 +731,7 @@ IOCTL_FUNC(AuthIdentityToService)
         return S_OK;
     }
 
-    LOG("AuthIdentityToService data: %s", logon_data_str.c_str());
+    // LOG("AuthIdentityToService data: %s", logon_data_str.c_str());
 
     std::vector<std::string> additional_headers{};
     if (identityCtx->use_sts_token)
@@ -727,7 +749,7 @@ IOCTL_FUNC(AuthIdentityToService)
         return HRESULT_FROM_CURLE(result.curl_error);
     }
 
-    LOG("Received response: %s", result.body.c_str());
+    // LOG("Received response: %s", result.body.c_str());
 
     if (result.status_code != 200 && result.status_code != 401)
     {
@@ -756,22 +778,22 @@ IOCTL_FUNC(AuthIdentityToServiceEx)
 
     HRESULT hr;
     // ensuring we have a client configuration, this will kickoff the download and wait for it to complete
-    if (FAILED(hr = config::init_client_config()))
-    {
-        LOG("Failed to initialize client configuration: 0x%08x", hr);
-        return hr;
-    }
+    // if (FAILED(hr = config::init_client_config()))
+    // {
+    //     LOG("Failed to initialize client configuration: 0x%08x", hr);
+    //     return hr;
+    // }
 
-    std::string rst_endpoint;
-    {
-        config_store_t cs{config::client_config_db_path()};
-        rst_endpoint = cs.get(g_endpointRequestSecurityTokens);
-        if (rst_endpoint.empty())
-        {
-            LOG("%s", "RST endpoint is not configured, this should never happen!!");
-            return E_UNEXPECTED;
-        }
-    }
+    std::string rst_endpoint = g_requestTokensEndpoint;
+    // {
+    //     config_store_t cs{config::client_config_db_path()};
+    //     rst_endpoint = cs.get(g_endpointRequestSecurityTokens);
+    //     if (rst_endpoint.empty())
+    //     {
+    //         LOG("%s", "RST endpoint is not configured, this should never happen!!");
+    //         return E_UNEXPECTED;
+    //     }
+    // }
 
     std::string data;
     if (FAILED(hr = serialise_logon_request(identityCtx, "LEGACY", pArgs->gMapParams, pArgs->dwFileSize, pArgs->dwParamCount, data)))
@@ -779,8 +801,6 @@ IOCTL_FUNC(AuthIdentityToServiceEx)
         LOG("Failed to serialise logon request for identity context 0x%08x", identityCtx);
         return E_FAIL;
     }
-
-    LOG("LogonIdentityEx data: %s", data.c_str());
 
     std::vector<std::string> additional_headers{};
     if (identityCtx->use_sts_token)
@@ -798,7 +818,7 @@ IOCTL_FUNC(AuthIdentityToServiceEx)
         return HRESULT_FROM_CURLE(result.curl_error);
     }
 
-    LOG("Received response: %s", result.body.c_str());
+    // LOG("Received response: %s", result.body.c_str());
 
     if (result.status_code != 200 && result.status_code != 401)
     {
@@ -835,22 +855,22 @@ IOCTL_FUNC(LogonIdentityEx)
         auth_policy.c_str());
 
     // ensuring we have a client configuration, this will kickoff the download and wait for it to complete
-    if (FAILED(hr = config::init_client_config()))
-    {
-        LOG("Failed to initialize client configuration: 0x%08x", hr);
-        return hr;
-    }
+    // if (FAILED(hr = config::init_client_config()))
+    // {
+    //     LOG("Failed to initialize client configuration: 0x%08x", hr);
+    //     return hr;
+    // }
 
-    std::string rst_endpoint;
-    {
-        config_store_t cs{config::client_config_db_path()};
-        rst_endpoint = cs.get(g_endpointRequestSecurityTokens);
-        if (rst_endpoint.empty())
-        {
-            LOG("%s", "RST endpoint is not configured, this should never happen!!");
-            return E_UNEXPECTED;
-        }
-    }
+    std::string rst_endpoint = g_requestTokensEndpoint;
+    // {
+    //     config_store_t cs{config::client_config_db_path()};
+    //     rst_endpoint = cs.get(g_endpointRequestSecurityTokens);
+    //     if (rst_endpoint.empty())
+    //     {
+    //         LOG("%s", "RST endpoint is not configured, this should never happen!!");
+    //         return E_UNEXPECTED;
+    //     }
+    // }
 
     std::string data;
     if (FAILED(hr = serialise_logon_request(identityCtx, auth_policy, pArgs->gMapParams, pArgs->dwFileSize, pArgs->dwParamCount, data)))
@@ -859,7 +879,7 @@ IOCTL_FUNC(LogonIdentityEx)
         return E_FAIL;
     }
 
-    LOG("LogonIdentityEx data: %s", data.c_str());
+    // LOG("LogonIdentityEx data: %s", data.c_str());
 
     std::vector<std::string> additional_headers{};
     if (identityCtx->use_sts_token)
@@ -877,7 +897,7 @@ IOCTL_FUNC(LogonIdentityEx)
         return HRESULT_FROM_CURLE(result.curl_error);
     }
 
-    LOG("Received response: %s", result.body.c_str());
+    // LOG("Received response: %s", result.body.c_str());
 
     if (result.status_code != 200 && result.status_code != 401)
     {

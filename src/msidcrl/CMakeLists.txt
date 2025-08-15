@@ -17,7 +17,7 @@ endif()
 target_link_options(msidcrl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/msidcrl.def)
 target_include_directories(msidcrl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_definitions(msidcrl PRIVATE "-DWLIDSVC_INPROC=0")
-target_compile_definitions(msidcrl PRIVATE "-DNO_LOGGING=1")
+#target_compile_definitions(msidcrl PRIVATE "-DNO_LOGGING=1")
 
 set_target_properties(msidcrl PROPERTIES
     OUTPUT_NAME "msidcrl"
@@ -46,7 +46,7 @@ endif()
 target_link_options(msidcrl40 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/msidcrl.def)
 target_include_directories(msidcrl40 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_definitions(msidcrl40 PRIVATE WLIDSVC_INPROC=1)
-target_compile_definitions(msidcrl40 PRIVATE "-DNO_LOGGING=1")
+#target_compile_definitions(msidcrl40 PRIVATE "-DNO_LOGGING=1")
 
 set_target_properties(msidcrl40 PROPERTIES
     OUTPUT_NAME "msidcrl40"

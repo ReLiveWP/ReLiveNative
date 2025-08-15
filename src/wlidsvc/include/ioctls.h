@@ -16,6 +16,7 @@ IOCTL_FUNC(CreateIdentityHandle);
 IOCTL_FUNC(CloseIdentityHandle);
 
 IOCTL_FUNC(GetIdentityPropertyByName);
+IOCTL_FUNC(SetIdentityProperty);
 
 IOCTL_FUNC(SetCredential);
 IOCTL_FUNC(PersistCredential);

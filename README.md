@@ -1,8 +1,11 @@
 # ReLiveWP Natives
-This repository contains a set of native binaries built to replace the Windows Live ID service and Microsoft Account DLL on Windows Phone 7 devices.
+This repository contains a set of native binaries built to replace the Windows Live ID service and Microsoft Account DLL on Windows Phone 7 devices and the Microsoft Zune desktop app.
+
+- `wlidsvc.dll`/`msidcrl.dll` combination for injection into Windows Phone 7 ROMs
+- `msidcrl40.dll` to load into the Zune Desktop app.
 
 # Building
-Included is all required source code and toolchain files, but no signing certificates. You will have to generate these yourself if you wish to deploy these binaries to your devices for testing. In future, test certificates may be provided to aid development efforts. 
+Included is all required source code and toolchain files, but no signing certificates. You will have to generate these yourself if you wish to deploy these binaries to your devices for testing. In future, test certificates may be provided to aid development efforts.
 
 Currently, the project expects a non-password protected PKCS#12 certificate chain named `certs/codesign.pfx`.
 

@@ -1,2 +1,8 @@
+#ifndef UNDER_CE
+#include_next <cerrno>
+#else
 #pragma once
+
 #include <errno.h>
+
+#endif // _UNDER_CE

@@ -2,117 +2,163 @@
 
 #include "util.h"
 #include "log.h"
+#include "types.h"
 
 #include <string>
-#include <sqlite3.h>
+
+struct sqlite3;
+struct sqlite3_stmt;
+
+#define CREATE_METADATA_STORE_SQL \
+    "CREATE TABLE IF NOT EXISTS metadata (\"key\" TEXT PRIMARY KEY, value TEXT);"
+
+#define CREATE_CONFIG_STORE_SQL \
+    "CREATE TABLE IF NOT EXISTS wlid_config (\"key\" TEXT PRIMARY KEY, value TEXT);"
+
+#define CREATE_IDENTITY_STORE_SQL             \
+    "CREATE TABLE IF NOT EXISTS identities (" \
+    "  identity TEXT PRIMARY KEY NOT NULL,"   \
+    "  puid INTEGER,"                         \
+    "  cuid TEXT,"                            \
+    "  email TEXT,"                           \
+    "  display_name TEXT"                     \
+    ");"
+
+#define CREATE_IDENTITY_INDEX_SQL \
+    "CREATE INDEX IF NOT EXISTS idx_identity_puid ON identities (puid);"
+
+#define CREATE_TOKEN_STORE_SQL                                                   \
+    "CREATE TABLE IF NOT EXISTS tokens ("                                        \
+    "  identity TEXT NOT NULL,"                                                  \
+    "  service TEXT NOT NULL,"                                                   \
+    "  token TEXT,"                                                              \
+    "  type TEXT,"                                                               \
+    "  expires TEXT,"                                                            \
+    "  created TEXT,"                                                            \
+    "  PRIMARY KEY (identity, service),"                                         \
+    "  FOREIGN KEY (identity) REFERENCES identities(identity) ON DELETE CASCADE" \
+    ");"
+
+#define CREATE_IDENTITY_PROPERTY_STORE_SQL                                       \
+    "CREATE TABLE IF NOT EXISTS identity_properties ("                           \
+    "  identity TEXT NOT NULL,"                                                  \
+    "  propkey TEXT NOT NULL,"                                                   \
+    "  propvalue TEXT,"                                                          \
+    "  PRIMARY KEY (identity, propkey),"                                         \
+    "  FOREIGN KEY (identity) REFERENCES identities(identity) ON DELETE CASCADE" \
+    ");"
+
+#define DB_INIT               \
+    CREATE_METADATA_STORE_SQL \
+    CREATE_CONFIG_STORE_SQL   \
+    CREATE_IDENTITY_STORE_SQL \
+    CREATE_IDENTITY_INDEX_SQL \
+    CREATE_TOKEN_STORE_SQL    \
+    CREATE_IDENTITY_PROPERTY_STORE_SQL
 
 namespace wlidsvc::storage
 {
-    constexpr int CURRENT_SCHEMA_VERSION = 1;
+    constexpr int CURRENT_SCHEMA_VERSION = 3;
 
-    class config_store_t
+    class base_store_t
     {
     public:
-        config_store_t(sqlite3 *db)
-            : owns_db(false), db(db), is_readonly(false)
-        {
-        }
+        base_store_t(sqlite3 *db);
+        base_store_t(const std::wstring &path, bool is_readonly = false);
+        ~base_store_t();
 
-        config_store_t(const std::wstring &path, bool is_readonly = false)
-            : owns_db(true), is_readonly(is_readonly)
-        {
-            std::string utf8path = wlidsvc::util::wstring_to_utf8(path);
-            if (sqlite3_open(utf8path.c_str(), &db) != SQLITE_OK)
-            {
-                LOG("Failed to open DB at %s", utf8path.c_str());
-                std::terminate();
-            }
-
-            if (is_readonly)
-                return;
-
-            if (exec("CREATE TABLE IF NOT EXISTS wlid_config (key TEXT PRIMARY KEY, value TEXT);", nullptr) != SQLITE_OK)
-            {
-                LOG("Failed to create wlid_config table. %s", sqlite3_errmsg(db));
-                std::terminate();
-            }
-        }
-
-        ~config_store_t()
-        {
-            if (db && owns_db)
-                sqlite3_close(db);
-        }
-
-        void set(const std::string &key, const std::string &value)
-        {
-            if (is_readonly)
-            {
-                LOG("Attempted to set value in read-only config store: %s", key.c_str());
-                return;
-            }
-
-            const char *sql =
-                "INSERT INTO wlid_config (key, value) VALUES (?, ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value;";
-
-            sqlite3_stmt *stmt;
-            prepare(sql, &stmt);
-            sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(stmt, 2, value.c_str(), -1, SQLITE_TRANSIENT);
-            step_and_finalize(stmt);
-        }
-
-        std::string get(const std::string &key, const std::string &default_value = {})
-        {
-            const char *sql = "SELECT value FROM wlid_config WHERE key = ?;";
-            sqlite3_stmt *stmt;
-            prepare(sql, &stmt);
-            sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_TRANSIENT);
-
-            int rc = sqlite3_step(stmt);
-            if (rc == SQLITE_ROW)
-            {
-                std::string val(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
-                sqlite3_finalize(stmt);
-                return val;
-            }
-            sqlite3_finalize(stmt);
-            return default_value;
-        }
-
-        void set(const std::wstring &key, const std::wstring &value)
-        {
-            set(wlidsvc::util::wstring_to_utf8(key), wlidsvc::util::wstring_to_utf8(value));
-        }
-
-        std::wstring get(const std::wstring &key)
-        {
-            return wlidsvc::util::utf8_to_wstring(get(wlidsvc::util::wstring_to_utf8(key)));
-        }
-
-    private:
+    protected:
         sqlite3 *db = nullptr;
         bool owns_db = true;
         bool is_readonly = false;
 
-        int exec(const char *sql, char **errmsg)
+        int exec(const char *sql, char **errmsg);
+        int prepare(const char *sql, sqlite3_stmt **stmt);
+        int step_and_finalize(sqlite3_stmt *stmt);
+    };
+
+    class config_store_t : protected base_store_t
+    {
+    public:
+        config_store_t(sqlite3 *db);
+        config_store_t(const std::wstring &path, bool is_readonly = false);
+        ~config_store_t() = default;
+
+        void set(const std::string &key, const std::string &value);
+        std::string get(const std::string &key, const std::string &default_value = {});
+
+        inline void set(const std::wstring &key, const std::wstring &value)
         {
-            return sqlite3_exec(db, sql, nullptr, nullptr, errmsg);
+            set(wlidsvc::util::wstring_to_utf8(key), wlidsvc::util::wstring_to_utf8(value));
         }
 
-        int prepare(const char *sql, sqlite3_stmt **stmt)
+        inline std::wstring get(const std::wstring &key)
         {
-            return sqlite3_prepare_v2(db, sql, -1, stmt, nullptr);
+            return wlidsvc::util::utf8_to_wstring(get(wlidsvc::util::wstring_to_utf8(key)));
+        }
+    };
+
+    class identity_store_t : protected base_store_t
+    {
+    public:
+        identity_store_t(const std::wstring &path, bool is_readonly = false);
+        ~identity_store_t() = default;
+
+        bool store(const identity_t &identity);
+        bool retrieve(const std::string &identity, identity_t &out_identity);
+
+        inline bool retrieve(const std::wstring &identity, identity_t &out_identity)
+        {
+            return retrieve(wlidsvc::util::wstring_to_utf8(identity), out_identity);
+        }
+    };
+
+    class token_store_t : protected base_store_t
+    {
+    public:
+        token_store_t(const std::wstring &path, bool is_readonly = false);
+        ~token_store_t() = default;
+
+        bool store(const token_t &token);
+        bool retrieve(const std::string &identity, const std::string &service, token_t &out_token);
+
+        inline bool retrieve(const std::wstring &identity, const std::wstring &service, token_t &out_token)
+        {
+            return retrieve(wlidsvc::util::wstring_to_utf8(identity), wlidsvc::util::wstring_to_utf8(service), out_token);
         }
 
-        int step_and_finalize(sqlite3_stmt *stmt)
-        {
-            int rc = sqlite3_step(stmt);
-            sqlite3_finalize(stmt);
+        // todo: C++ iterators seem like hell
+    };
 
-            return rc;
+    class identity_token_store_t : protected base_store_t
+    {
+    public:
+        identity_token_store_t(const std::wstring &path, const std::string &identity, bool is_readonly = false);
+        ~identity_token_store_t() = default;
+
+        bool set(const std::string &key, const std::string &value);
+        bool get(const std::string &key, std::string &value);
+
+        bool find_identities_for_credential_type(const std::wstring credential_type, std::vector<std::wstring> &identities);
+
+        inline bool set(const std::wstring &key, const std::wstring &value)
+        {
+            return set(wlidsvc::util::wstring_to_utf8(key), wlidsvc::util::wstring_to_utf8(value));
         }
+
+        inline bool get(const std::wstring &key, std::wstring &value)
+        {
+            std::string value_utf8 = util::wstring_to_utf8(value);
+            bool retVal = get(wlidsvc::util::wstring_to_utf8(key), value_utf8);
+            if (retVal)
+                value = util::utf8_to_wstring(value_utf8);
+
+            return retVal;
+        }
+
+    private:
+        std::string identity;
+        // todo: C++ iterators seem like hell
     };
 
     constexpr LPCWSTR g_configDBFolder = TEXT("\\ReLiveWP");

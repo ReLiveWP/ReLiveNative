@@ -89,6 +89,8 @@ namespace wlidsvc::config
 
     const environment_t environment()
     {
+        return environment_t::production;
+        
 #ifdef IS_PRODUCTION_BUILD
         return environment_t::production;
 #else
@@ -114,7 +116,7 @@ namespace wlidsvc::config
         DWORD written;
         if (!WriteFile(hFile, contents, size * nmemb, &written, NULL))
         {
-            LOG("Failed to write to file: %d", HRESULT_FROM_WIN32(GetLastError()));
+            LOG("Failed to write to file: 0x%08x", HRESULT_FROM_WIN32(GetLastError()));
             return 0; // return 0 to indicate failure
         }
         return size * nmemb; // return number of bytes written
@@ -137,7 +139,7 @@ namespace wlidsvc::config
         HANDLE hFile = CreateFile(client_config_db_path().c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         if (hFile == INVALID_HANDLE_VALUE)
         {
-            LOG("Failed to open file for writing: %d", HRESULT_FROM_WIN32(GetLastError()));
+            LOG("Failed to open file for writing: 0x%08x", HRESULT_FROM_WIN32(GetLastError()));
             curl_easy_cleanup(curl);
             return HRESULT_FROM_WIN32(GetLastError());
         }
@@ -145,6 +147,7 @@ namespace wlidsvc::config
         SetEndOfFile(hFile); // ensure the file is empty before writing
 
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
         curl_easy_setopt(curl, CURLOPT_USERAGENT, net::g_userAgent);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, OnWriteFile);

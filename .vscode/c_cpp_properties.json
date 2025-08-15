@@ -14,12 +14,29 @@
                 "_UNICODE",
                 "_WIN32_WCE=0x700",
                 "__GNUC__",
-                "__COREDLL__"
+                "__COREDLL__",
+                "ARM"
             ],
             "compilerPath": "/opt/cegcc/bin/arm-mingw32ce-gcc",
             "cStandard": "c11",
             "cppStandard": "c++17",
             "intelliSenseMode": "windows-gcc-arm"
+        },
+        {
+            "name": "Mingw32 (x86_64)",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/src/wlidsvc/include"
+            ],
+            "defines": [
+                "UNICODE",
+                "_UNICODE",
+                "__GNUC__"
+            ],
+            "cStandard": "c17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "windows-gcc-x64",
+            "compilerPath": "/usr/bin/x86_64-w64-mingw32-gcc"
         }
     ],
     "version": 4

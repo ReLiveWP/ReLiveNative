@@ -13,6 +13,16 @@ typedef void CURL;
 #define STRINGIZE2(x) #x
 #endif
 
+#ifdef NO_LOGGING
+#define LOG(fmt, ...)
+#define LOG_WIDE(fmt, ...)
+
+#define VALIDATE_PARAMETER(x) \
+    if ((x))                  \
+    {                         \
+        return E_INVALIDARG;  \
+    }
+#else
 #define LINE_STRING STRINGIZE(__LINE__)
 #define LOG(fmt, ...) wlidsvc::log::info().log(__FILE__ ":" LINE_STRING " " fmt, __VA_ARGS__)
 #define LOG_WIDE(fmt, ...) wlidsvc::log::info().log(TEXT(__FILE__) L":" TEXT(LINE_STRING) L" " fmt, __VA_ARGS__)
@@ -23,13 +33,14 @@ typedef void CURL;
         wlidsvc::log::info().log(__FILE__ " " LINE_STRING " ASSERTION FAILED: " #x); \
         return E_INVALIDARG;                                                         \
     }
+#endif
 
-#define WINDOWS_TICK 10000000
-#define SEC_TO_UNIX_EPOCH 11644473600LL
+#define WINDOWS_TICK 10000
+#define SEC_TO_UNIX_EPOCH 11644473600000LL
 static inline __time64_t filetime_to_time(const FILETIME &ft)
 {
-    long long secs = ((*(LONGLONG *)&(ft)) / WINDOWS_TICK) - SEC_TO_UNIX_EPOCH;
-    __time64_t t = (__time64_t)secs;
+    long long ms = ((*(LONGLONG *)&(ft)) / WINDOWS_TICK) - SEC_TO_UNIX_EPOCH;
+    __time64_t t = (__time64_t)ms;
     return t;
 }
 
@@ -42,7 +53,7 @@ static inline char *wchar_to_char(const wchar_t *fmt)
     char *tmp = new (std::nothrow) char[dwLength + 1];
     if (tmp == nullptr)
         return nullptr;
-        
+
     WideCharToMultiByte(CP_UTF8, 0, fmt, length, tmp, dwLength, NULL, NULL);
     tmp[dwLength] = '\0';
 
@@ -194,7 +205,7 @@ namespace wlidsvc::log
 
         static DWORD thread_proc(IN LPVOID lpParameter);
 
-        logqueue_t<100> queue_;
+        logqueue_t<2048> queue_;
         HANDLE hThread_;
         logger_thread_state_t state_;
         CRITICAL_SECTION init_cs;

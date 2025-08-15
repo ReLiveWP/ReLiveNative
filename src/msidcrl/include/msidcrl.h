@@ -4,10 +4,11 @@
 #include <wincrypt.h>
 #include <wlidcomm.h>
 
+
 extern "C"
 {
-    
     HRESULT Initialize(GUID *lpGuid, DWORD dwVersionMajor, DWORD dwVersionMinor);
+    HRESULT InitializeEx(GUID* lpGuid, DWORD dwVersionMajor, DWORD dwVersionMinor, IDCRL_OPTION* lpOptions, DWORD cbOptions);
     HRESULT Uninitialize();
     HRESULT AuthIdentityToService(
         IN HIDENTITY hIdentity,
@@ -66,17 +67,17 @@ extern "C"
         OUT LPWSTR *szAuthToken);
     HRESULT GetAuthState(
         IN HIDENTITY hIdentity,
-        OUT DWORD *pdwAuthState,
-        OUT DWORD *pdwAuthRequired,
-        OUT DWORD *pdwRequestStatus,
-        OUT LPWSTR *szWebFlowUrl);
+        OUT OPTIONAL DWORD *pdwAuthState,
+        OUT OPTIONAL DWORD *pdwAuthRequired,
+        OUT OPTIONAL DWORD *pdwRequestStatus,
+        OUT OPTIONAL LPWSTR *szWebFlowUrl);
     HRESULT GetAuthStateEx(
         IN HIDENTITY hIdentity,
-        IN LPCWSTR szServiceTarget,
-        OUT DWORD *pdwAuthState,
-        OUT DWORD *pdwAuthRequired,
-        OUT DWORD *pdwRequestStatus,
-        OUT LPWSTR *szWebFlowUrl);
+        IN OPTIONAL LPCWSTR szServiceTarget,
+        OUT OPTIONAL DWORD *pdwAuthState,
+        OUT OPTIONAL DWORD *pdwAuthRequired,
+        OUT OPTIONAL DWORD *pdwRequestStatus,
+        OUT OPTIONAL LPWSTR *szWebFlowUrl);
     HRESULT GetDefaultID(OUT LPWSTR *szDefaultID);
     HRESULT GetDeviceId(
         IN DWORD dwFlags,
@@ -162,13 +163,26 @@ extern "C"
         OUT LPWSTR *pwszUnk3);
     HRESULT WSResolveHIP(IN LPVOID lpUnk1, IN HIDENTITY *hIdentity, LPCWSTR szUnk2);
 
-    HRESULT SerializeRSTParams(IN RSTParams *pParams, IN DWORD dwParamCount, OUT LPGUID lpgFileName, OUT HANDLE* hMappedFile);
+    // for zune desktop support
+    // InitializeEx@29
 }
 
-#if IS_TESTING
+#ifndef UNDER_CE
 #define ActivateDevice(...)
+#endif
+
+#ifndef WLIDSVC_INPROC
+#define WLIDSVC_INPROC 0 
+#endif
+
+#if WLIDSVC_INPROC
 #undef CreateFile
 #define CreateFile CreateFile_TestHook
+#undef CloseHandle
+#define CloseHandle CloseHandle_TestHook
+#undef DeviceIoControl
+#define DeviceIoControl DeviceIoControl_TestHook
+
 extern "C" HANDLE CreateFile_TestHook(
     LPCWSTR lpFileName,
     DWORD dwDesiredAccess,
@@ -177,8 +191,6 @@ extern "C" HANDLE CreateFile_TestHook(
     DWORD dwCreationDisposition,
     DWORD dwFlagsAndAttributes,
     HANDLE hTemplateFile);
-#undef DeviceIoControl
-#define DeviceIoControl DeviceIoControl_TestHook
 extern "C" BOOL DeviceIoControl_TestHook(
     HANDLE hDevice,
     DWORD dwIoControlCode,
@@ -188,7 +200,5 @@ extern "C" BOOL DeviceIoControl_TestHook(
     DWORD nOutBufferSize,
     LPDWORD lpBytesReturned,
     LPOVERLAPPED lpOverlapped);
-#undef CloseHandle
-#define CloseHandle CloseHandle_TestHook
 extern "C" BOOL CloseHandle_TestHook(HANDLE hDevice);
 #endif

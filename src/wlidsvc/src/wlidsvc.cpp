@@ -9,14 +9,34 @@
 #include "globals.h"
 #include "update.h"
 
+#include <curl/curl.h>
+#include <sqlite3.h>
+
 using namespace wlidsvc;
 using namespace wlidsvc::globals;
 using namespace wlidsvc::storage;
 
 extern "C"
 {
+    LONG WINAPI WLI_ExceptionHandler(struct _EXCEPTION_POINTERS *pExceptionInfo)
+    {
+        LOG("Is this thing on?? ExceptionHandler called in service!!! ExceptionCode=0x%08x; ExceptionAddress=0x%08x; ExceptionInformation0x%08x;",
+            pExceptionInfo->ExceptionRecord->ExceptionCode,
+            pExceptionInfo->ExceptionRecord->ExceptionAddress,
+            pExceptionInfo->ExceptionRecord->ExceptionInformation);
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+
+    extern void init_errno(void);
     DWORD_PTR WLI_Init(DWORD_PTR hContext)
     {
+        init_errno();
+        curl_global_init(CURL_GLOBAL_DEFAULT);
+        InitializeCriticalSection(&g_wlidSvcReadyCritSect);
+        InitializeCriticalSection(&g_ClientConfigCritSect);
+        InitializeCriticalSection(&g_dbCritSect);
+        g_tlsIsImpersonatedIdx = TlsAlloc();
+
         LOG("%s", "WLI_Init called!");
 
         {
@@ -40,6 +60,10 @@ extern "C"
 
         CreateThread(NULL, 0, CheckForUpdatesThreadProc, NULL, 0, NULL);
         SetEvent(g_hWlidSvcReady);
+
+#ifdef UNDER_CE
+        AddVectoredExceptionHandler(1, WLI_ExceptionHandler);
+#endif
 
         return TRUE;
     }
@@ -87,6 +111,10 @@ extern "C"
         IOCTL_HANDLER(IOCTL_WLIDSVC_GET_AUTH_STATE_EX, WLI_GetAuthStateEx);
         IOCTL_HANDLER(IOCTL_WLIDSVC_AUTH_IDENTITY_TO_SERVICE_EX, WLI_AuthIdentityToServiceEx);
         IOCTL_HANDLER(IOCTL_WLIDSVC_LOGON_IDENTITY_EX, WLI_LogonIdentityEx);
+        IOCTL_HANDLER(IOCTL_WLIDSVC_AUTH_IDENTITY_TO_SERVICE, WLI_AuthIdentityToService);
+        IOCTL_HANDLER(IOCTL_WLIDSVC_PERSIST_CREDENTIAL, WLI_PersistCredential);
+        IOCTL_HANDLER(IOCTL_WLIDSVC_ENUM_IDENTITIES_WITH_CACHED_CREDENTIALS, WLI_EnumIdentitiesWithCachedCredentials);
+        IOCTL_HANDLER(IOCTL_WLIDSVC_CLOSE_ENUM_IDENTITIES_HANDLE, WLI_CloseEnumIdentitiesHandle);
         END_IOCTL_MAP()
         return FALSE;
     }

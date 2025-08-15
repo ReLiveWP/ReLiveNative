@@ -29,6 +29,7 @@ EXPORTS
     HasPersistedCredential @ 23
     HasSetCredential @ 89
     Initialize @ 1
+    InitializeEx @ 29
     LogonIdentityEx @ 31
     NextIdentity @ 18
     PassportFreeMemory @ 3

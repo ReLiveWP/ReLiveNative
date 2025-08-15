@@ -94,11 +94,12 @@ namespace wlidsvc::net
 
             curl_easy_reset(curl); // Reset previous options
             curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
+            curl_easy_setopt(curl, CURLOPT_USERAGENT, user_agent.c_str());
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, OnWrite);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
             curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, OnHeader);
             curl_easy_setopt(curl, CURLOPT_HEADERDATA, &resp);
-            curl_easy_setopt(curl, CURLOPT_USERAGENT, user_agent.c_str());
 
             struct curl_slist *headersList = nullptr;
             if (!contentType.empty())

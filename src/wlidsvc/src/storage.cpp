@@ -1,6 +1,7 @@
 #include "storage.h"
 #include "log.h"
 #include <shlobj.h>
+#include <sqlite3.h>
 
 namespace wlidsvc::storage
 {
@@ -18,11 +19,60 @@ namespace wlidsvc::storage
         return folderPath + g_configDBName;
     }
 
+    base_store_t::base_store_t(sqlite3 *db)
+        : owns_db(false), db(db), is_readonly(false)
+    {
+    }
+
+    base_store_t::base_store_t(const std::wstring &path, bool is_readonly)
+        : owns_db(true), is_readonly(is_readonly)
+    {
+        std::string utf8path = wlidsvc::util::wstring_to_utf8(path);
+
+        int rc;
+        if ((rc = sqlite3_open(utf8path.c_str(), &db)) != SQLITE_OK)
+        {
+            LOG("Failed to open DB at %s, %s", utf8path.c_str(), sqlite3_errstr(rc));
+            Sleep(10000);
+            std::terminate();
+        }
+    }
+
+    base_store_t::~base_store_t()
+    {
+        if (db && owns_db)
+            sqlite3_close(db);
+    }
+
+    int base_store_t::exec(const char *sql, char **errmsg)
+    {
+        return sqlite3_exec(db, sql, nullptr, nullptr, errmsg);
+    }
+
+    int base_store_t::prepare(const char *sql, sqlite3_stmt **stmt)
+    {
+        return sqlite3_prepare_v2(db, sql, -1, stmt, nullptr);
+    }
+
+    int base_store_t::step_and_finalize(sqlite3_stmt *stmt)
+    {
+        int rc;
+        if ((rc = sqlite3_step(stmt)) != SQLITE_DONE)
+        {
+            LOG("SQLite error: %s", sqlite3_errmsg(db));
+        }
+        sqlite3_finalize(stmt);
+
+        return rc;
+    }
+
     int init_db(void)
     {
         sqlite3 *db = nullptr;
         int code = SQLITE_OK;
         char *errmsg = nullptr;
+
+        util::critsect_t cs{&globals::g_dbCritSect};
 
         std::string schema_version = std::to_string(CURRENT_SCHEMA_VERSION);
         std::string utf8path = wlidsvc::util::wstring_to_utf8(db_path());
@@ -32,28 +82,10 @@ namespace wlidsvc::storage
             return code;
         }
 
-        const char *create_metadata_sql =
-            "CREATE TABLE IF NOT EXISTS metadata ("
-            "  key TEXT PRIMARY KEY,"
-            "  value TEXT"
-            ");";
-
-        if ((code = sqlite3_exec(db, create_metadata_sql, nullptr, nullptr, &errmsg)) != SQLITE_OK)
+        if ((code = sqlite3_exec(db, DB_INIT, nullptr, nullptr, &errmsg)) != SQLITE_OK)
         {
-            LOG("Failed to create metadata table: %s", errmsg);
-            sqlite3_free(errmsg);
-            return code;
-        }
-
-        const char *create_config_sql =
-            "CREATE TABLE IF NOT EXISTS wlid_config ("
-            "  key TEXT PRIMARY KEY,"
-            "  value TEXT"
-            ");";
-
-        if ((code = sqlite3_exec(db, create_config_sql, nullptr, nullptr, &errmsg)) != SQLITE_OK)
-        {
-            LOG("Failed to create wlid_config table: %s", errmsg);
+            LOG("Failed to initialize database: %s", errmsg);
+            sqlite3_close(db);
             sqlite3_free(errmsg);
             return code;
         }
@@ -65,6 +97,8 @@ namespace wlidsvc::storage
         if ((code = sqlite3_prepare_v2(db, check_version_sql, -1, &stmt, nullptr)) != SQLITE_OK)
         {
             LOG("SQLite error: %s", sqlite3_errmsg(db));
+            sqlite3_close(db);
+            sqlite3_finalize(stmt);
             return code;
         }
 
@@ -85,6 +119,7 @@ namespace wlidsvc::storage
                 if ((rc = sqlite3_step(update_stmt)) != SQLITE_DONE)
                 {
                     sqlite3_finalize(update_stmt);
+                    sqlite3_close(db);
                     LOG("SQLite error: %s", sqlite3_errmsg(db));
                     return rc;
                 }
@@ -103,12 +138,13 @@ namespace wlidsvc::storage
             if ((rc = sqlite3_step(insert_stmt)) != SQLITE_DONE)
             {
                 sqlite3_finalize(insert_stmt);
+                sqlite3_close(db);
                 LOG("SQLite error: %s", sqlite3_errmsg(db));
                 return rc;
             }
             sqlite3_finalize(insert_stmt);
         }
-    close:
+
         sqlite3_close(db);
         return code;
     }

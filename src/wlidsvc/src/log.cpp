@@ -139,7 +139,7 @@ namespace wlidsvc::log
                     }
                 }
 
-                Sleep(5000);
+                Sleep(1000);
                 break;
             }
             case logger_thread_state_t::cleanup:

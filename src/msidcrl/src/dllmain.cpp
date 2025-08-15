@@ -1,4 +1,6 @@
 #include "globals.h"
+#include "logging.h"
+#include "wlidcomm.h"
 
 using namespace msidcrl::globals;
 
@@ -14,6 +16,9 @@ extern "C"
         {
         case DLL_PROCESS_ATTACH:
             InitializeCriticalSection(&g_hDriverCrtiSec);
+#ifdef UNDER_CE
+            // AddVectoredExceptionHandler(1, MSIDCRL_ExceptionHandler);
+#endif
             break;
 
         case DLL_THREAD_ATTACH:

@@ -1,6 +1,8 @@
 #include "msidcrl.h"
 #include "logging.h"
 
+#include <assert.h>
+
 using namespace msidcrl::globals;
 
 extern "C"
@@ -8,7 +10,8 @@ extern "C"
     /**
      * Serializes a set of RSTParams into a file mapping.
      */
-    HRESULT SerializeRSTParams(IN RSTParams *pParams, IN DWORD dwParamCount, OUT GUID* lpgFileName, OUT HANDLE* hMappedFile)
+    HRESULT SerializeRSTParams(
+        IN RSTParams *pParams, IN DWORD dwParamCount, OUT GUID *lpgFileName, OUT HANDLE *hMappedFile, OUT DWORD *dwFileSize)
     {
         *hMappedFile = NULL;
         *lpgFileName = GUID{0};
@@ -17,7 +20,9 @@ extern "C"
             return S_FALSE;
         }
 
-        DWORD cbSize = 8 + sizeof(RSTParams) * dwParamCount;
+        DWORD cbSize = 8 + (sizeof(RSTParams) * dwParamCount);
+        cbSize += (cbSize % 16);
+
         for (DWORD i = 0; i < dwParamCount; ++i)
         {
             if (pParams[i].szServiceTarget != nullptr)
@@ -31,10 +36,15 @@ extern "C"
             return E_OUTOFMEMORY;
 
         // first 4 bytes are the total size, next 4 bytes are the parameter count
-        *(DWORD *)pBuffer = cbSize;
-        *(DWORD *)(pBuffer + 4) = dwParamCount;
+        // *(DWORD *)pBuffer = cbSize;
+        // *(DWORD *)(pBuffer + 4) = dwParamCount;
 
-        DWORD offset = 8;
+        DWORD *dwBuf = (DWORD *)pBuffer;
+        dwBuf[0] = cbSize;
+        dwBuf[1] = dwParamCount;
+
+        DWORD_PTR offset = 8;
+        DWORD_PTR initialOffset = 8;
         for (DWORD i = 0; i < dwParamCount; ++i)
         {
             RSTParams *pParam = reinterpret_cast<RSTParams *>(pBuffer + offset);
@@ -47,25 +57,36 @@ extern "C"
             offset += sizeof(RSTParams);
         }
 
+        // round offset to the nearest 16 bytes
+        offset += (offset % 16);
+
         // create a string table for the service targets and policies
         for (DWORD i = 0; i < dwParamCount; ++i)
         {
-            RSTParams *pParam = reinterpret_cast<RSTParams *>(pBuffer + (sizeof(RSTParams) * i));
-
             if (pParams[i].szServiceTarget != nullptr)
             {
-                pParam->szServiceTarget = reinterpret_cast<LPWSTR>(offset);
-                wcscpy(reinterpret_cast<LPWSTR>(pBuffer + offset), pParams[i].szServiceTarget);
-                offset += (wcslen(pParams[i].szServiceTarget) + 1) * sizeof(WCHAR);
+                auto len = (wcslen(pParams[i].szServiceTarget) + 1) * sizeof(WCHAR);
+                memcpy((pBuffer + offset), pParams[i].szServiceTarget, len);
+
+                RSTParams *pParam = (RSTParams *)(pBuffer + initialOffset + (sizeof(RSTParams) * i));
+                pParam->szServiceTarget = (LPWSTR)offset;
+
+                offset += len;
             }
 
             if (pParams[i].szServicePolicy != nullptr)
             {
-                pParam->szServicePolicy = reinterpret_cast<LPWSTR>(offset);
-                wcscpy(reinterpret_cast<LPWSTR>(pBuffer + offset), pParams[i].szServicePolicy);
-                offset += (wcslen(pParams[i].szServicePolicy) + 1) * sizeof(WCHAR);
+                auto len = (wcslen(pParams[i].szServicePolicy) + 1) * sizeof(WCHAR);
+                memcpy((pBuffer + offset), pParams[i].szServicePolicy, len);
+
+                RSTParams *pParam = (RSTParams *)(pBuffer + initialOffset + (sizeof(RSTParams) * i));
+                pParam->szServicePolicy = (LPWSTR)offset;
+
+                offset += len;
             }
         }
+
+        assert(offset == cbSize);
 
         GUID guid = {0};
         CoCreateGuid(&guid);
@@ -91,9 +112,24 @@ extern "C"
 
         *hMappedFile = hMap;
         *lpgFileName = guid;
+        *dwFileSize = cbSize;
         free(pBuffer);
 
         LOG_MESSAGE_FMT(TEXT("Serialized RSTParams to file: %s"), szGuid);
+        return S_OK;
+    }
+
+    HRESULT Server_CloseEnumIdentitiesHandle(DWORD_PTR hEnumServer)
+    {
+        HRESULT hr = S_OK;
+        IOCTL_CLOSE_ENUM_IDENTITIES_HANDLE args{.hServerHandle = hEnumServer};
+        if (FAILED(hr = DeviceIoControl(g_hDriver,
+                                        IOCTL_WLIDSVC_CLOSE_ENUM_IDENTITIES_HANDLE,
+                                        &args, sizeof(IOCTL_CLOSE_ENUM_IDENTITIES_HANDLE),
+                                        NULL, 0,
+                                        NULL, NULL)))
+            return hr;
+
         return S_OK;
     }
 }

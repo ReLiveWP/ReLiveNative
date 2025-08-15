@@ -11,4 +11,6 @@ namespace wlidsvc::globals
     HANDLE g_ClientConfigDownloadedEvent = NULL;
     CRITICAL_SECTION g_ClientConfigCritSect{};
     DWORD g_tlsIsImpersonatedIdx = -1;
+
+    CRITICAL_SECTION g_dbCritSect = {};
 }

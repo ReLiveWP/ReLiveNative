@@ -14,4 +14,5 @@ namespace wlidsvc::globals
     extern BOOL g_ClientConfigDownloading;
     extern HANDLE g_ClientConfigDownloadedEvent;
     extern CRITICAL_SECTION g_ClientConfigCritSect;
+    extern CRITICAL_SECTION g_dbCritSect;
 }

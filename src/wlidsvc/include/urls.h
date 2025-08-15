@@ -10,12 +10,8 @@
 
 namespace wlidsvc::config
 {
-#ifdef UNDER_CE
-    static constexpr const char *g_clientConfigEndpoint = "https://relive.wamwoowam.co.uk/config";
-    static constexpr const char *g_clientConfigVersionEndpoint = "https://relive.wamwoowam.co.uk/config/version";
-#else
-    static constexpr const char *g_clientConfigEndpoint = "http://localhost:5012/config_int";
-    static constexpr const char *g_clientConfigVersionEndpoint = "http://localhost:5012/config/version";
-#endif
+    static constexpr const char *g_clientConfigEndpoint = "https://login.relivewp.net/config";
+    static constexpr const char *g_clientConfigVersionEndpoint = "https://login.relivewp.net/config/version";
+
     static constexpr const char *g_endpointRequestSecurityTokens = "Endpoint:RequestSecurityTokens";
 }

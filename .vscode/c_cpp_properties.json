@@ -31,7 +31,8 @@
             "defines": [
                 "UNICODE",
                 "_UNICODE",
-                "__GNUC__"
+                "__GNUC__",
+                "_WIN64"
             ],
             "cStandard": "c17",
             "cppStandard": "gnu++17",

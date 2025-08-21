@@ -11,14 +11,10 @@
 namespace wlidsvc::config
 {
 #ifdef PRODUCTION
-    // static constexpr const char *g_clientConfigEndpoint = "https://login.relivewp.net/config";
-    // static constexpr const char *g_clientConfigVersionEndpoint = "https://login.relivewp.net/config/version";
     static constexpr const char *g_requestTokensEndpoint = "https://login.relivewp.net/auth/request_tokens";
+    static constexpr const char *g_provisionDeviceEndpoint = "https://login.relivewp.net/auth/provision_device";
 #else
-    // static constexpr const char *g_clientConfigEndpoint = "https://login.int.relivewp.net/config";
-    // static constexpr const char *g_clientConfigVersionEndpoint = "https://login.int.relivewp.net/config/version";
-    static constexpr const char *g_requestTokensEndpoint = "https://login.int.relivewp.net/auth/request_tokens";
+    static constexpr const char *g_requestTokensEndpoint = "http://login.int.relivewp.net/auth/request_tokens";
+    static constexpr const char *g_provisionDeviceEndpoint = "http://login.int.relivewp.net/auth/provision_device";
 #endif
-
-    // static constexpr const char *g_endpointRequestSecurityTokens = "Endpoint:RequestSecurityTokens";
 }

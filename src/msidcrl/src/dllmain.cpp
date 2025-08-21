@@ -4,8 +4,11 @@
 
 using namespace msidcrl::globals;
 
+
 extern "C"
 {
+LONG WINAPI MSIDCRL_ExceptionHandler(EXCEPTION_POINTERS *pExceptionInfo);
+
     BOOL DllMain(
         HINSTANCE hinstDLL, // handle to DLL module
         DWORD fdwReason,    // reason for calling function
@@ -16,9 +19,6 @@ extern "C"
         {
         case DLL_PROCESS_ATTACH:
             InitializeCriticalSection(&g_hDriverCrtiSec);
-#ifdef UNDER_CE
-            // AddVectoredExceptionHandler(1, MSIDCRL_ExceptionHandler);
-#endif
             break;
 
         case DLL_THREAD_ATTACH:

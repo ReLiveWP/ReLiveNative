@@ -6,9 +6,10 @@ add_library(msidcrl SHARED
     src/msidcrl.cpp
     src/util.cpp
     src/test.cpp
+    src/exception.cpp
 )
 
-target_link_libraries(msidcrl PRIVATE wlidshared ole32)
+target_link_libraries(msidcrl PRIVATE wlidshared ole32 crypt32)
 
 if(CE_BUILD)
 target_link_libraries(msidcrl PRIVATE toolhelp)
@@ -35,6 +36,7 @@ add_library(msidcrl40 SHARED
     src/msidcrl.cpp
     src/test.cpp
     src/util.cpp
+    src/exception.cpp
 )
 
 target_link_libraries(msidcrl40 PRIVATE libwlidsvc wlidshared ole32)

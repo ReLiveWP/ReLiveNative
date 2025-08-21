@@ -163,6 +163,8 @@ extern "C"
         OUT LPWSTR *pwszUnk3);
     HRESULT WSResolveHIP(IN LPVOID lpUnk1, IN HIDENTITY *hIdentity, LPCWSTR szUnk2);
 
+    LONG WINAPI MSIDCRL_ExceptionHandler(EXCEPTION_POINTERS *pExceptionInfo);
+
     // for zune desktop support
     // InitializeEx@29
 }

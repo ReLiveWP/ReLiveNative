@@ -8,8 +8,10 @@
 #include "storage.h"
 #include "globals.h"
 #include "update.h"
+#include "deviceid.h"
 
 #include <curl/curl.h>
+#include <mbedtls/psa_util.h>
 #include <sqlite3.h>
 
 using namespace wlidsvc;
@@ -31,6 +33,7 @@ extern "C"
     DWORD_PTR WLI_Init(DWORD_PTR hContext)
     {
         init_errno();
+        psa_crypto_init();
         curl_global_init(CURL_GLOBAL_DEFAULT);
         InitializeCriticalSection(&g_wlidSvcReadyCritSect);
         InitializeCriticalSection(&g_ClientConfigCritSect);
@@ -38,6 +41,8 @@ extern "C"
         g_tlsIsImpersonatedIdx = TlsAlloc();
 
         LOG("%s", "WLI_Init called!");
+
+        
 
         {
             util::critsect_t cs{&g_wlidSvcReadyCritSect};
@@ -122,6 +127,7 @@ extern "C"
         IOCTL_HANDLER(IOCTL_WLIDSVC_ENUM_IDENTITIES_WITH_CACHED_CREDENTIALS, WLI_EnumIdentitiesWithCachedCredentials);
         IOCTL_HANDLER(IOCTL_WLIDSVC_CLOSE_ENUM_IDENTITIES_HANDLE, WLI_CloseEnumIdentitiesHandle);
         IOCTL_HANDLER(IOCTL_WLIDSVC_SET_IDENTITY_PROPERTY, WLI_SetIdentityProperty);
+        IOCTL_HANDLER(IOCTL_WLIDSVC_GET_DEVICE_ID, WLI_GetDeviceId);
         END_IOCTL_MAP()
 
         return FALSE;

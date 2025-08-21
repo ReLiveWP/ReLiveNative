@@ -28,3 +28,5 @@ IOCTL_FUNC(LogonIdentityEx);
 
 IOCTL_FUNC(EnumIdentitiesWithCachedCredentials);
 IOCTL_FUNC(CloseEnumIdentitiesHandle);
+
+IOCTL_FUNC(GetDeviceId);

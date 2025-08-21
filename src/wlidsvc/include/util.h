@@ -156,4 +156,14 @@ namespace wlidsvc::util
         return result;
     }
 
+    static inline void bytes_to_hex(const unsigned char *bytes, size_t len, char *out)
+    {
+        static const char hex[] = "0123456789abcdef";
+        for (size_t i = 0; i < len; i++)
+        {
+            out[i * 2] = hex[(bytes[i] >> 4) & 0xF];
+            out[i * 2 + 1] = hex[bytes[i] & 0xF];
+        }
+        out[len * 2] = '\0'; // Null-terminate
+    }
 }

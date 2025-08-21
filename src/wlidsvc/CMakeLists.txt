@@ -19,11 +19,12 @@ add_library(objlib_wlidsvc OBJECT
     src/ioctls.cpp
     src/update.cpp
     src/types.cpp
+    src/deviceid.cpp
 )
 
 target_link_libraries(objlib_wlidsvc PRIVATE wlidshared nlohmann_json::nlohmann_json)
 target_include_directories(objlib_wlidsvc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-#target_compile_definitions(objlib_wlidsvc PRIVATE "-DNO_LOGGING=1")
+target_compile_options(objlib_wlidsvc PRIVATE "-std=gnu++17")
 
 add_library(wlidsvc SHARED
     $<TARGET_OBJECTS:objlib_wlidsvc>
@@ -34,9 +35,15 @@ set_target_properties(wlidsvc PROPERTIES
     PREFIX ""
 )
 target_link_libraries(wlidsvc PRIVATE 
-    wlidshared 
+    wlidshared
     "-lole32"
     "-latomic"
+    "-lmbedx509"
+    "-lmbedcrypto"
+    "-lmbedtls"
+    "-lbcrypt"
+    "-lncrypt"
+    "-lcrypt32"
     "-lcurl"
     "-lsqlite3"
     "-static-libgcc"
@@ -65,6 +72,12 @@ target_link_libraries(libwlidsvc PUBLIC
     wlidshared 
     "-lole32"
     "-latomic"
+    "-lmbedx509"
+    "-lmbedcrypto"
+    "-lmbedtls"
+    "-lbcrypt"
+    "-lncrypt"
+    "-lcrypt32"
     "-lcurl"
     "-lsqlite3"
     "-static-libgcc"

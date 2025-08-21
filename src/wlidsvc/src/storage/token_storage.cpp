@@ -78,7 +78,8 @@ namespace wlidsvc::storage
             out_token.expires = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 2));
             out_token.created = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 3));
             sqlite3_finalize(stmt);
-            return true;
+
+            return out_token.token.size() > 0;
         }
 
         sqlite3_finalize(stmt);

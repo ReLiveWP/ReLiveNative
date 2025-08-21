@@ -2,6 +2,9 @@
 #include <windows.h>
 #include <string>
 
+#define JSON_HAS_FILESYSTEM 0
+#define JSON_HAS_EXPERIMENTAL_FILESYSTEM 0
+
 namespace wlidsvc::config
 {
     const HRESULT init_client_config(void);

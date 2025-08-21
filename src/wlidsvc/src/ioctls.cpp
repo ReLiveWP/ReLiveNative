@@ -1,6 +1,8 @@
 #include <windows.h>
 #include <objbase.h>
 #include <wlidcomm.h>
+#include <wincrypt.h>
+
 #include "ioctls.h"
 #include "log.h"
 #include "util.h"
@@ -9,12 +11,15 @@
 #include "config.h"
 #include "urls.h"
 #include "storage.h"
+#include "deviceid.h"
 
 #include <algorithm>
 
 #include <cerrno>
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
+
+#include <base64.hpp>
 
 using namespace wlidsvc;
 using namespace wlidsvc::net;
@@ -44,6 +49,12 @@ using namespace wlidsvc::config;
     }
 
 #define PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL 0x8004882e
+
+#ifndef CERT_SYSTEM_STORE_CURRENT_USER
+#define CERT_SYSTEM_STORE_LOCATION_SHIFT 16
+#define CERT_SYSTEM_STORE_CURRENT_USER_ID 1
+#define CERT_SYSTEM_STORE_CURRENT_USER (CERT_SYSTEM_STORE_CURRENT_USER_ID << CERT_SYSTEM_STORE_LOCATION_SHIFT)
+#endif
 
 HRESULT DeserializeRSTParams(GUID gMapParams, DWORD dwSize, LPBYTE *ppBuffer, RSTParams **ppParams)
 {
@@ -171,13 +182,11 @@ HRESULT serialise_logon_request(identity_ctx_t *identityCtx, const std::string &
 
     delete[] pBuffer;
 
-    if (token_requests.size() == 0)
-    {
-        token_requests.push_back({
-            {"service_target", "http://Passport.NET/tb"},
-            {"service_policy", auth_policy},
-        });
-    }
+    // the global token is important, make sure we always request one
+    token_requests.push_back({
+        {"service_target", "http://Passport.NET/tb"},
+        {"service_policy", auth_policy},
+    });
 
     json logon_data = {
         {"identity", util::wstring_to_utf8(identityCtx->member_name)},
@@ -688,38 +697,46 @@ IOCTL_FUNC(AuthIdentityToService)
     }
 
     HRESULT hr;
-    // ensuring we have a client configuration, this will kickoff the download and wait for it to complete
-    // if (FAILED(hr = config::init_client_config()))
-    // {
-    //     LOG("Failed to initialize client configuration: 0x%08x", hr);
-    //     return hr;
-    // }
-
     std::string rst_endpoint = g_requestTokensEndpoint;
-    // {
-    //     config_store_t cs{config::client_config_db_path()};
-    //     rst_endpoint = cs.get(g_endpointRequestSecurityTokens);
-    //     if (rst_endpoint.empty())
-    //     {
-    //         LOG("%s", "RST endpoint is not configured, this should never happen!!");
-    //         return E_UNEXPECTED;
-    //     }
-    // }
-
     std::string logon_data_str;
+
     {
-        std::string credentialType = "ps:password";
-        std::string credential{};
+        json credentials = json::object();
+        for (auto &&credential : identityCtx->credentials)
+        {
+            if (!(credential.first == L"ps:password" && credential.second.find_first_not_of('*') == std::wstring::npos))
+                credentials[util::wstring_to_utf8(credential.first)] = util::wstring_to_utf8(credential.second);
+        }
 
-        identity_token_store_t ps{storage::db_path(), util::wstring_to_utf8(identityCtx->member_name), true};
-        if (!ps.get(credentialType, credential))
-            return E_FAIL;
+        if (credentials.size() == 0)
+        {
+            if (identityCtx->use_sts_token)
+            {
+                token_t token;
+                token_store_t token_store{storage::db_path()};
+                if (!token_store.retrieve(identityCtx->member_name, L"http://Passport.NET/tb", token))
+                {
+                    LOG("No credentials set for identity %s, attempted to use Passport.NET, it doesn't exist.", util::wstring_to_utf8(identityCtx->member_name).c_str());
+                    return PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL;
+                }
+            }
+            else
+            {
+                LOG("No credentials set for identity %s", util::wstring_to_utf8(identityCtx->member_name).c_str());
+                return PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL;
+            }
+        }
 
-        json credentials = {"ps:password", credential};
         json token_requests = json::array();
         token_requests.push_back({
-            {"service_target", service_target},
-            {"service_policy", service_policy},
+            {"service_target", util::wstring_to_utf8(service_target)},
+            {"service_policy", util::wstring_to_utf8(service_policy)},
+        });
+
+        // the global token is important, make sure we always request one
+        token_requests.push_back({
+            {"service_target", "http://Passport.NET/tb"},
+            {"service_policy", "JWT"},
         });
 
         json logon_data = {
@@ -728,7 +745,6 @@ IOCTL_FUNC(AuthIdentityToService)
             {"token_requests", token_requests}};
 
         logon_data_str = logon_data.dump();
-        return S_OK;
     }
 
     // LOG("AuthIdentityToService data: %s", logon_data_str.c_str());
@@ -777,24 +793,7 @@ IOCTL_FUNC(AuthIdentityToServiceEx)
         return E_INVALIDARG;
 
     HRESULT hr;
-    // ensuring we have a client configuration, this will kickoff the download and wait for it to complete
-    // if (FAILED(hr = config::init_client_config()))
-    // {
-    //     LOG("Failed to initialize client configuration: 0x%08x", hr);
-    //     return hr;
-    // }
-
     std::string rst_endpoint = g_requestTokensEndpoint;
-    // {
-    //     config_store_t cs{config::client_config_db_path()};
-    //     rst_endpoint = cs.get(g_endpointRequestSecurityTokens);
-    //     if (rst_endpoint.empty())
-    //     {
-    //         LOG("%s", "RST endpoint is not configured, this should never happen!!");
-    //         return E_UNEXPECTED;
-    //     }
-    // }
-
     std::string data;
     if (FAILED(hr = serialise_logon_request(identityCtx, "LEGACY", pArgs->gMapParams, pArgs->dwFileSize, pArgs->dwParamCount, data)))
     {
@@ -854,24 +853,7 @@ IOCTL_FUNC(LogonIdentityEx)
         memberName.c_str(),
         auth_policy.c_str());
 
-    // ensuring we have a client configuration, this will kickoff the download and wait for it to complete
-    // if (FAILED(hr = config::init_client_config()))
-    // {
-    //     LOG("Failed to initialize client configuration: 0x%08x", hr);
-    //     return hr;
-    // }
-
     std::string rst_endpoint = g_requestTokensEndpoint;
-    // {
-    //     config_store_t cs{config::client_config_db_path()};
-    //     rst_endpoint = cs.get(g_endpointRequestSecurityTokens);
-    //     if (rst_endpoint.empty())
-    //     {
-    //         LOG("%s", "RST endpoint is not configured, this should never happen!!");
-    //         return E_UNEXPECTED;
-    //     }
-    // }
-
     std::string data;
     if (FAILED(hr = serialise_logon_request(identityCtx, auth_policy, pArgs->gMapParams, pArgs->dwFileSize, pArgs->dwParamCount, data)))
     {
@@ -987,6 +969,125 @@ IOCTL_FUNC(CloseEnumIdentitiesHandle)
     auto *pArgs = reinterpret_cast<PIOCTL_CLOSE_ENUM_IDENTITIES_HANDLE>(pBufIn);
 
     CloseHandle((HANDLE)pArgs->hServerHandle);
+
+    return S_OK;
+}
+
+static HRESULT FindDeviceCert(BOOL bGenerateIfMissing, std::string &device_cert_thumb)
+{
+    HRESULT hr = S_OK;
+    PCCERT_CONTEXT pCert = NULL;
+    HCERTSTORE hStore = NULL;
+
+    {
+        config_store_t cs{storage::db_path()};
+        device_cert_thumb = cs.get("DeviceCertThumbprint");
+    }
+
+    if (!device_cert_thumb.empty())
+    {
+        std::string thumbprint = base64::from_base64(device_cert_thumb);
+        hStore = CertOpenStore((LPCSTR)CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"MY");
+
+        if (!hStore)
+        {
+            hr = HRESULT_FROM_WIN32(GetLastError());
+            goto cleanup;
+        }
+
+        CRYPT_HASH_BLOB hashBlob;
+        hashBlob.cbData = thumbprint.size();
+        hashBlob.pbData = (PBYTE)thumbprint.c_str();
+
+        pCert = CertFindCertificateInStore(hStore, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_HASH, &hashBlob, NULL);
+
+        if (!pCert)
+        {
+            goto missing;
+        }
+
+        SYSTEMTIME sysNow;
+        FILETIME ftNow;
+        GetSystemTime(&sysNow);
+        SystemTimeToFileTime(&sysNow, &ftNow);
+
+        if (CompareFileTime(&ftNow, &pCert->pCertInfo->NotAfter) > 0)
+        {
+            goto missing;
+        }
+
+        return S_OK;
+    }
+
+missing:
+    if (bGenerateIfMissing)
+    {
+        if (FAILED(hr = wlidsvc::deviceid::FetchDeviceCertificate()))
+        {
+            goto cleanup;
+        }
+
+        hr = FindDeviceCert(FALSE, device_cert_thumb);
+        goto cleanup;
+    }
+
+    hr = CRYPT_E_NOT_FOUND;
+
+cleanup:
+    if (pCert != nullptr)
+        CertFreeCertificateContext(pCert);
+    if (hStore != nullptr)
+        CertCloseStore(hStore, 0);
+
+    return hr;
+}
+
+IOCTL_FUNC(GetDeviceId)
+{
+    VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_GET_DEVICE_ID_ARGS));
+    VALIDATE_PARAMETER(dwLenOut != sizeof(IOCTL_GET_DEVICE_ID_RETURN));
+
+    auto *pArgs = reinterpret_cast<PIOCTL_GET_DEVICE_ID_ARGS>(pBufIn);
+    auto *pReturn = reinterpret_cast<PIOCTL_GET_DEVICE_ID_RETURN>(pBufOut);
+
+    token_t token{};
+    token_store_t token_store{storage::db_path(), true};
+
+    config_store_t cs{storage::db_path(), true};
+    auto default_id = cs.get("DefaultID");
+    if (default_id.empty())
+    {
+        return S_FALSE;
+    }
+
+    BYTE rgDeviceId[20];
+    DWORD cbDeviceId = 20;
+    char deviceIdHex[41]{0};
+
+    HRESULT hr;
+    if (FAILED(hr = GetDeviceUniqueID((LPBYTE)PERSONALISATION_VALUE, strlen(PERSONALISATION_VALUE), 1, rgDeviceId, &cbDeviceId)))
+    {
+        LOG("GetDeviceUniqueID returned 0x%08x", hr);
+        return hr;
+    }
+
+    util::bytes_to_hex(rgDeviceId, cbDeviceId, deviceIdHex);
+    std::wstring device_id = util::utf8_to_wstring(deviceIdHex);
+    VALIDATE_PARAMETER(device_id.size() >= 128);
+    wcsncpy(pReturn->szDeviceId, device_id.c_str(), 128);
+    pReturn->szDeviceId[device_id.size()] = '\0';
+
+    if (pArgs->bNeedsCert)
+    {
+        std::string device_cert_thumb;
+        if (FAILED(hr = FindDeviceCert(TRUE, device_cert_thumb)))
+        {
+            return hr;
+        }
+
+        std::string raw_thumbprint = base64::from_base64(device_cert_thumb);
+        memcpy(pReturn->bDeviceCertThumb, raw_thumbprint.c_str(), 20);
+    }
 
     return S_OK;
 }

@@ -4,6 +4,15 @@
 #include "wlidcomm.h"
 #include "msidcrl_int.h"
 
+#include <wincrypt.h>
+#include <wininet.h>
+
+#ifndef CERT_SYSTEM_STORE_CURRENT_USER
+#define CERT_SYSTEM_STORE_LOCATION_SHIFT 16
+#define CERT_SYSTEM_STORE_CURRENT_USER_ID 1
+#define CERT_SYSTEM_STORE_CURRENT_USER (CERT_SYSTEM_STORE_CURRENT_USER_ID << CERT_SYSTEM_STORE_LOCATION_SHIFT)
+#endif
+
 using namespace msidcrl::globals;
 
 extern "C"
@@ -26,6 +35,9 @@ extern "C"
     {
 #if WLIDSVC_INPROC
         TEST_InitHooks();
+#endif
+#ifdef UNDER_CE
+        AddVectoredExceptionHandler(1, MSIDCRL_ExceptionHandler);
 #endif
 
         critsect_t cs{&g_hDriverCrtiSec};
@@ -199,6 +211,18 @@ extern "C"
             *pcbSessionKeyLength = 0;
         }
 
+        LPWSTR deviceId;
+        PCCERT_CONTEXT ctx;
+        hr = GetDeviceId(0x10, NULL, &deviceId, &ctx);
+        if (FAILED(hr))
+        {
+            LOG_MESSAGE_FMT(TEXT("Failed to GetDeviceID 0x%08x"), hr);
+            return hr;
+        }
+
+        if (ctx != nullptr)
+            CertFreeCertificateContext(ctx);
+
         return S_OK;
     }
 
@@ -240,6 +264,19 @@ extern "C"
                              NULL, NULL);
 
         CloseHandle(hMap);
+
+        LPWSTR deviceId;
+        PCCERT_CONTEXT ctx;
+        hr = GetDeviceId(0x10, NULL, &deviceId, &ctx);
+        if (FAILED(hr))
+        {
+            LOG_MESSAGE_FMT(TEXT("Failed to GetDeviceID 0x%08x"), hr);
+            return hr;
+        }
+
+        if (ctx != nullptr)
+            CertFreeCertificateContext(ctx);
+
         return hr;
     }
 
@@ -721,9 +758,82 @@ extern "C"
     {
         critsect_t cs{&g_hDriverCrtiSec};
 
-        LOG_MESSAGE_FMT(TEXT("[E_NOTIMPL] GetDeviceId: dwFlags=%d; pvAdditionalParams=%s; pwszDeviceId=0x%08x; didCertContext=0x%08x;"), dwFlags, LOG_STRING(pvAdditionalParams), pwszDeviceId, didCertContext);
+        if (g_hDriver == nullptr)
+        {
+            GUID guid{0};
+            Initialize(&guid, 1, 0);
+        }
 
-        return E_NOTIMPL;
+        LOG_MESSAGE_FMT(TEXT("GetDeviceId: dwFlags=%d; pvAdditionalParams=%s; pwszDeviceId=0x%08x; didCertContext=0x%08x;"), dwFlags, LOG_STRING(pvAdditionalParams), pwszDeviceId, didCertContext);
+
+        IOCTL_GET_DEVICE_ID_ARGS args{};
+        IOCTL_GET_DEVICE_ID_RETURN retVal{};
+
+        if (pvAdditionalParams != nullptr)
+            wcsncpy(args.szAdditionalParams, pvAdditionalParams, 256);
+
+        args.bNeedsCert = didCertContext != nullptr;
+
+        HRESULT hr = S_OK;
+        if (FAILED(hr = DeviceIoControl(g_hDriver,
+                                        IOCTL_WLIDSVC_GET_DEVICE_ID,
+                                        &args, sizeof(IOCTL_GET_DEVICE_ID_ARGS),
+                                        &retVal, sizeof(IOCTL_GET_DEVICE_ID_RETURN),
+                                        NULL, NULL)))
+            return hr;
+
+        if (pwszDeviceId != nullptr)
+        {
+            auto len = wcslen(retVal.szDeviceId);
+            auto pszDeviceId = (LPWSTR)calloc((len + 1), sizeof(WCHAR));
+            wcsncpy(pszDeviceId, retVal.szDeviceId, len + 1);
+
+            *pwszDeviceId = pszDeviceId;
+        }
+
+        if (didCertContext != nullptr)
+        {
+            PCCERT_CONTEXT pCert = NULL;
+            HCERTSTORE hStore = CertOpenStore(
+                (LPCSTR)CERT_STORE_PROV_SYSTEM,
+                0,
+                0,
+                CERT_SYSTEM_STORE_CURRENT_USER,
+                L"MY");
+
+            if (!hStore)
+            {
+                LOG_MESSAGE_FMT(L"hStore was NULL: 0x%08x;", HRESULT_FROM_WIN32(GetLastError()))
+                return HRESULT_FROM_WIN32(GetLastError());
+            }
+
+            CRYPT_HASH_BLOB hashBlob;
+            hashBlob.cbData = 20;
+            hashBlob.pbData = retVal.bDeviceCertThumb;
+
+            pCert = CertFindCertificateInStore(
+                hStore,
+                X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+                0,
+                CERT_FIND_HASH,
+                &hashBlob,
+                NULL);
+
+            if (pCert)
+            {
+                *didCertContext = pCert;
+            }
+            else
+            {
+                LOG_MESSAGE_FMT(L"CertFindCertificateInStore failed 0x%08x;", HRESULT_FROM_WIN32(GetLastError()))
+                CertCloseStore(hStore, 0);
+                return HRESULT_FROM_WIN32(GetLastError());
+            }
+
+            CertCloseStore(hStore, 0);
+        }
+
+        return S_OK;
     }
 
     HRESULT GetExtendedError(
@@ -851,14 +961,26 @@ extern "C"
     {
         critsect_t cs{&g_hDriverCrtiSec};
 
-        LOG_MESSAGE_FMT(TEXT("[E_NOTIMPL] GetPassword: szUnk1=%s;"), LOG_STRING(szUnk1));
+        LOG_MESSAGE_FMT(TEXT("GetPassword: szUnk1=%s;"), LOG_STRING(szUnk1));
 
         if (szUnk1 == nullptr || pwszUnk2 == nullptr)
         {
             return E_INVALIDARG;
         }
 
-        return E_NOTIMPL;
+        HRESULT hr = S_OK;
+        HIDENTITY hIdent = NULL;
+        if (FAILED(hr = CreateIdentityHandle(szUnk1, 0, &hIdent)))
+            return hr;
+
+        if (FAILED(hr = AuthIdentityToService(hIdent, L"http://Passport.NET/tb", L"LEGACY", 0x00010000, pwszUnk2, NULL, NULL, NULL)))
+        {
+            CloseIdentityHandle(hIdent);
+            return hr;
+        }
+
+        CloseIdentityHandle(hIdent);
+        return S_OK;
     }
 
     HRESULT GetResponseForHttpChallenge(

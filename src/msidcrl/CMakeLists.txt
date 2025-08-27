@@ -56,6 +56,6 @@ set_target_properties(msidcrl40 PROPERTIES
 )
 
 include("${CMAKE_SOURCE_DIR}/cmake/StripSymbols.cmake")
-# strip_symbols(msidcrl40)
+strip_symbols(msidcrl40)
 include("${CMAKE_SOURCE_DIR}/cmake/SignBinary.cmake")
 sign_target(msidcrl40 ".dll")

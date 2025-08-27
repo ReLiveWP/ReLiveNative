@@ -210,18 +210,7 @@ extern "C"
         {
             *pcbSessionKeyLength = 0;
         }
-
-        LPWSTR deviceId;
-        PCCERT_CONTEXT ctx;
-        hr = GetDeviceId(0x10, NULL, &deviceId, &ctx);
-        if (FAILED(hr))
-        {
-            LOG_MESSAGE_FMT(TEXT("Failed to GetDeviceID 0x%08x"), hr);
-            return hr;
-        }
-
-        if (ctx != nullptr)
-            CertFreeCertificateContext(ctx);
+        
 
         return S_OK;
     }
@@ -264,18 +253,6 @@ extern "C"
                              NULL, NULL);
 
         CloseHandle(hMap);
-
-        LPWSTR deviceId;
-        PCCERT_CONTEXT ctx;
-        hr = GetDeviceId(0x10, NULL, &deviceId, &ctx);
-        if (FAILED(hr))
-        {
-            LOG_MESSAGE_FMT(TEXT("Failed to GetDeviceID 0x%08x"), hr);
-            return hr;
-        }
-
-        if (ctx != nullptr)
-            CertFreeCertificateContext(ctx);
 
         return hr;
     }
@@ -948,7 +925,7 @@ extern "C"
             return E_INVALIDARG;
         }
 
-#ifdef PRODUCTION
+#ifdef IS_PRODUCTION_BUILD
         *pdwEnvironment = 0;
 #else
         *pdwEnvironment = 1;

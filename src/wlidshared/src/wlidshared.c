@@ -7,6 +7,7 @@ static DWORD gTLSIndex;
 static CRITICAL_SECTION gCS;
 static lconv gLconv = {".", ","};
 
+__attribute__((constructor))
 void init_errno(void)
 {
     gTLSIndex = TlsAlloc();
@@ -35,6 +36,7 @@ int *__errno_location(void)
     return (int *)val;
 }
 #else
+__attribute__((constructor))
 void init_errno(void)
 {
     // No-op for non-CE platforms

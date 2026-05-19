@@ -20,4 +20,5 @@ namespace wlidsvc::config
     const std::string log_endpoint();
 
     const std::wstring default_id();
+    const std::wstring device_id();
 }

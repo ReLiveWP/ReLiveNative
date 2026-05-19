@@ -134,16 +134,8 @@ extern "C"
             ppbSessionKey,
             pcbSessionKeyLength);
 
-        if (szServiceTarget == nullptr)
-        {
+        if (hIdentity == nullptr || szServiceTarget == nullptr)
             return E_INVALIDARG;
-        }
-
-        if (ppbSessionKey != nullptr || pcbSessionKeyLength != nullptr)
-        {
-            LOG_MESSAGE(TEXT("AuthIdentityToService requested ppbSessionKey and idk what that does yet so"));
-            // return E_NOTIMPL;
-        }
 
         HRESULT hr;
         IOCTL_AUTH_IDENTITY_TO_SERVICE_ARGS args{};
@@ -179,40 +171,35 @@ extern "C"
             szTokenPtr[len] = L'\0';
 
             *szToken = szTokenPtr;
+
+            LOG_MESSAGE_FMT(
+                TEXT("AuthIdentityToService: hr=0x%08hx; hIdentity=0x%08hx; szServiceTarget=%s; szServicePolicy=%s; szToken=%s;"),
+                hr,
+                hIdentity,
+                LOG_STRING(szServiceTarget),
+                LOG_STRING(szServicePolicy),
+                LOG_STRING(szTokenPtr));
         }
 
         if (pdwResultFlags != nullptr)
-        {
             *pdwResultFlags = ret.dwResultFlags;
-        }
+
+        if (pcbSessionKeyLength != nullptr)
+            *pcbSessionKeyLength = 0;
 
         if (ppbSessionKey != nullptr)
         {
-            // auto len = wcslen(ret.szToken);
-            // auto szTokenPtr = (LPWSTR)malloc((len + 1) * sizeof(WCHAR));
-            // if (szTokenPtr == nullptr)
-            //     return E_OUTOFMEMORY;
+            if (szServicePolicy != nullptr &&
+                (wcsicmp(szServicePolicy, L"MBI_KEY") || wcsicmp(szServicePolicy, L"HBI_KEY")))
+            {
+                *ppbSessionKey = (PBYTE)calloc(24, sizeof(BYTE));
 
-            // wcsncpy(szTokenPtr, ret.szToken, 1024);
-            // szTokenPtr[len] = L'\0';
-
-            // *ppbSessionKey = (LPBYTE)szTokenPtr;
-            // if (pcbSessionKeyLength != nullptr)
-            //     *pcbSessionKeyLength = (len) * sizeof(WCHAR);
-
-            // unconvinced these are ever correctly set??
-            *ppbSessionKey = NULL;
-
-            // return PPCRL_S_TOKEN_TYPE_DOES_NOT_SUPPORT_SESSION_KEY;
+                if (pcbSessionKeyLength != nullptr)
+                    *pcbSessionKeyLength = 24;
+            }
         }
 
-        if (pcbSessionKeyLength != nullptr)
-        {
-            *pcbSessionKeyLength = 0;
-        }
-        
-
-        return S_OK;
+        return hr;
     }
 
     HRESULT AuthIdentityToServiceEx(
@@ -788,9 +775,10 @@ extern "C"
             hashBlob.cbData = 20;
             hashBlob.pbData = retVal.bDeviceCertThumb;
 
+            // original did CERT_FIND_HASH_STR, i dont believe that matters here
             pCert = CertFindCertificateInStore(
                 hStore,
-                X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+                X509_ASN_ENCODING,
                 0,
                 CERT_FIND_HASH,
                 &hashBlob,
@@ -925,7 +913,7 @@ extern "C"
             return E_INVALIDARG;
         }
 
-#ifdef IS_PRODUCTION_BUILD
+#if IS_PRODUCTION_BUILD
         *pdwEnvironment = 0;
 #else
         *pdwEnvironment = 1;

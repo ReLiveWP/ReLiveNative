@@ -16,8 +16,8 @@ namespace wlidsvc
     struct identity_t
     {
         std::string identity;
-        uint64_t puid;
-        std::string cuid;
+        int64_t puid;
+        std::string cid;
         std::string email;
         std::string display_name;
     };
@@ -27,7 +27,7 @@ namespace wlidsvc
         std::string identity;
         std::string service;
         std::string token;
-        std::string type; // "JWT", "X509v3", etc.
+        std::string type;    // "JWT", "X509v3", etc.
         std::string expires; // ISO 8601 format
         std::string created; // ISO 8601 format
     };
@@ -53,13 +53,14 @@ namespace wlidsvc
     {
         handle_ctx_t(DWORD _hThis);
         ~handle_ctx_t();
-        
+
         CRITICAL_SECTION cs;
 
         DWORD hThis;
         GUID app;
         DWORD major_version;
         DWORD minor_version;
+        std::wstring app_guid;
         std::wstring exec_path;
         std::vector<identity_ctx_t *> associated_identities;
     };

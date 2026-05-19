@@ -125,8 +125,8 @@ extern "C"
         IN HIDENTITY hIdentity,
         OPTIONAL IN LPCWSTR szAuthPolicy,
         IN DWORD dwAuthFlags,
-        IN RSTParams *pcRSTParams,
-        IN DWORD dwpcRSTParamsCount);
+        IN OPTIONAL RSTParams *pcRSTParams,
+        IN OPTIONAL DWORD dwpcRSTParamsCount);
     HRESULT NextIdentity(IN HENUMIDENTITY hEnum, OUT LPWSTR *pwszMemberName);
     HRESULT PassportFreeMemory(IN OUT void *o);
     HRESULT PersistCredential(IN HIDENTITY hIdentity, IN LPCWSTR lpCredType);

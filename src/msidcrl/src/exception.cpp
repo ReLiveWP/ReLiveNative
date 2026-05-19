@@ -85,10 +85,10 @@ extern "C"
             LPCWSTR attempt = pExceptionInfo->ExceptionRecord->ExceptionInformation[0] ? L"READ" : L"WRITE";
             LOG_MESSAGE_FMT(L"Attempt to %s at address " ADDRESS_PRINTF, attempt, pExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
         }
-        else
-        {
-            return EXCEPTION_CONTINUE_SEARCH;
-        }
+        // else
+        // {
+        //     return EXCEPTION_CONTINUE_SEARCH;
+        // }
 
         HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS | TH32CS_SNAPMODULE | TH32CS_GETALLMODS, 0);
         if (hSnapshot == INVALID_HANDLE_VALUE)
@@ -134,7 +134,7 @@ extern "C"
 
         DWORD_PTR addr;
         int x = 0;
-        while ((DWORD_PTR)SP > stackBase && !ProbeAddress(SP, &addr) && x < 64)
+        while ((DWORD_PTR)SP > stackBase && !ProbeAddress(SP, &addr) && x < 16)
         {
             DWORD_PTR offset = 0;
 
@@ -190,6 +190,7 @@ extern "C"
 #endif
 
         LeaveCriticalSection(&msidcrl::globals::g_hDriverCrtiSec);
+
         return EXCEPTION_CONTINUE_SEARCH;
     }
 }

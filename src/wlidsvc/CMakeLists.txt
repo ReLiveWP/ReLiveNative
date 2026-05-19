@@ -50,6 +50,10 @@ target_link_libraries(wlidsvc PRIVATE
     "-static-libstdc++"
 )
 
+if(CE_BUILD)
+target_link_libraries(wlidsvc PRIVATE toolhelp)
+endif()
+
 target_link_libraries(wlidsvc PRIVATE nlohmann_json::nlohmann_json)
 target_link_options(wlidsvc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/wlidsvc.def)
 target_include_directories(wlidsvc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)

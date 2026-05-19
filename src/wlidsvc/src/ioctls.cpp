@@ -48,6 +48,7 @@ using namespace wlidsvc::config;
         return __imp_hr;                                                  \
     }
 
+#define PPCRL_REQUEST_E_PASSWORD_EXPIRED 0x80048831
 #define PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL 0x8004882e
 
 #ifndef CERT_SYSTEM_STORE_CURRENT_USER
@@ -234,8 +235,8 @@ HRESULT parse_logon_response(identity_ctx_t *identityCtx, std::string &body)
 
         identity_t identity;
         identity.identity = util::wstring_to_utf8(identityCtx->member_name);
-        identity.puid = response["puid"].get<uint64_t>();
-        identity.cuid = response["cid"].get<std::string>();
+        identity.puid = response["puid"].get<int64_t>();
+        identity.cid = response["cid"].get<std::string>();
         identity.email = response["email_address"].get<std::string>();
         identity.display_name = username;
 
@@ -244,7 +245,7 @@ HRESULT parse_logon_response(identity_ctx_t *identityCtx, std::string &body)
             LOG("Failed to store identity: %s (PUID: %llu, CUID: %s, Email: %s)",
                 identity.identity.c_str(),
                 identity.puid,
-                identity.cuid.c_str(),
+                identity.cid.c_str(),
                 identity.email.c_str());
 
             return E_FAIL;
@@ -253,7 +254,7 @@ HRESULT parse_logon_response(identity_ctx_t *identityCtx, std::string &body)
         LOG("Stored identity: %s (PUID: %llu, CUID: %s, Email: %s)",
             identity.identity.c_str(),
             identity.puid,
-            identity.cuid.c_str(),
+            identity.cid.c_str(),
             identity.email.c_str());
     }
 
@@ -351,7 +352,7 @@ IOCTL_FUNC(InitHandle)
     if (pArgs->dwApiLevel != WLIDSVC_API_LEVEL)
     {
         // binary mismatch between wlidsvc/msidcrl. should never happen.
-        LOG(L"[0x%08x] %s", hContext, "API version mismatch detected! This should never happen!!");
+        LOG("[0x%08x] %s", hContext, "API version mismatch detected! This should never happen!!");
         return E_UNEXPECTED;
     }
 
@@ -364,8 +365,10 @@ IOCTL_FUNC(InitHandle)
     StringFromGUID2(pArgs->gApp, lpGuid, 40);
 
     auto exec_path = util::wstring_to_utf8(hContext->exec_path);
-    auto guid = util::wstring_to_utf8(std::wstring(lpGuid));
-    LOG(L"[0x%08x] Initialized app %s, dwMajor: %d, dwMinor: %d, execPath: %s",
+    hContext->app_guid = std::wstring(lpGuid);
+
+    auto guid = util::wstring_to_utf8(hContext->app_guid);
+    LOG("[0x%08x] Initialized app %s, dwMajor: %d, dwMinor: %d, execPath: %s",
         hContext,
         guid.c_str(),
         pArgs->dwMajorVersion,
@@ -504,7 +507,7 @@ IOCTL_FUNC(GetIdentityPropertyByName)
 
         if (_wcsicmp(pArgs->szPropertyName, L"CID") == 0)
         {
-            std::wstring cuid = util::utf8_to_wstring(identity.cuid);
+            std::wstring cuid = util::utf8_to_wstring(identity.cid);
 
             VALIDATE_PARAMETER(cuid.size() >= 128);
             wcsncpy(pReturn->szPropertyValue, cuid.c_str(), 128);
@@ -577,10 +580,10 @@ IOCTL_FUNC(SetCredential)
     auto credentialType = std::wstring(pArgs->szCredentialType);
     auto credentialValue = std::wstring(pArgs->szCredential);
 
-    identityCtx->credentials[credentialType] = credentialValue;
-
     if (credentialType == L"ps:password" && credentialValue.find_first_not_of('*') == std::wstring::npos)
         identityCtx->use_sts_token = true;
+    else
+        identityCtx->credentials[credentialType] = credentialValue;
 
     LOG("SetCredential: hIdentity=0x%08hx; szCredentialType=%s; szCredential=REDACTED;",
         pArgs->hIdentity, util::wstring_to_utf8(credentialType).c_str());
@@ -647,15 +650,17 @@ IOCTL_FUNC(GetAuthStateEx)
     {
         pReturn->dwAuthState = AUTHENTICATED_USING_PASSWORD;
         pReturn->dwAuthRequired = 0;
+        pReturn->dwRequestStatus = S_OK;
     }
     else
     {
-        pReturn->dwAuthState = 0;
-        pReturn->dwAuthRequired = 1;
+        pReturn->dwAuthState = AUTHENTICATED_USING_PASSWORD;
+        pReturn->dwAuthRequired = 0x00048808;
+        pReturn->dwRequestStatus = 0x80048862;
     }
 
-    pReturn->dwRequestStatus = S_OK;
-    wcsncpy(pReturn->szWebFlowUrl, L"https://example.com/auth", 512);
+    // wcsncpy(pReturn->szWebFlowUrl, L"https://example.com/auth", 512);
+    wcsncpy(pReturn->szWebFlowUrl, L"", 512);
 
     return S_OK;
 }
@@ -693,7 +698,7 @@ IOCTL_FUNC(AuthIdentityToService)
             return S_OK;
         }
 
-        return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+        return PPCRL_REQUEST_E_PASSWORD_EXPIRED;
     }
 
     HRESULT hr;
@@ -716,7 +721,7 @@ IOCTL_FUNC(AuthIdentityToService)
                 token_store_t token_store{storage::db_path()};
                 if (!token_store.retrieve(identityCtx->member_name, L"http://Passport.NET/tb", token))
                 {
-                    LOG("No credentials set for identity %s, attempted to use Passport.NET, it doesn't exist.", util::wstring_to_utf8(identityCtx->member_name).c_str());
+                    LOG("No credentials set for identity %s, attempted to use STS, it doesn't exist.", util::wstring_to_utf8(identityCtx->member_name).c_str());
                     return PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL;
                 }
             }
@@ -798,7 +803,7 @@ IOCTL_FUNC(AuthIdentityToServiceEx)
     if (FAILED(hr = serialise_logon_request(identityCtx, "LEGACY", pArgs->gMapParams, pArgs->dwFileSize, pArgs->dwParamCount, data)))
     {
         LOG("Failed to serialise logon request for identity context 0x%08x", identityCtx);
-        return E_FAIL;
+        return hr;
     }
 
     std::vector<std::string> additional_headers{};
@@ -866,10 +871,12 @@ IOCTL_FUNC(LogonIdentityEx)
     std::vector<std::string> additional_headers{};
     if (identityCtx->use_sts_token)
     {
-        token_t token;
+        token_t token{};
         token_store_t token_store{storage::db_path()};
         if (token_store.retrieve(identityCtx->member_name, L"http://Passport.NET/tb", token))
             additional_headers.push_back("Authorization: Bearer " + token.token);
+        else
+            return PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL;
     }
 
     net::client_t client{};
@@ -973,75 +980,6 @@ IOCTL_FUNC(CloseEnumIdentitiesHandle)
     return S_OK;
 }
 
-static HRESULT FindDeviceCert(BOOL bGenerateIfMissing, std::string &device_cert_thumb)
-{
-    HRESULT hr = S_OK;
-    PCCERT_CONTEXT pCert = NULL;
-    HCERTSTORE hStore = NULL;
-
-    {
-        config_store_t cs{storage::db_path()};
-        device_cert_thumb = cs.get("DeviceCertThumbprint");
-    }
-
-    if (!device_cert_thumb.empty())
-    {
-        std::string thumbprint = base64::from_base64(device_cert_thumb);
-        hStore = CertOpenStore((LPCSTR)CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"MY");
-
-        if (!hStore)
-        {
-            hr = HRESULT_FROM_WIN32(GetLastError());
-            goto cleanup;
-        }
-
-        CRYPT_HASH_BLOB hashBlob;
-        hashBlob.cbData = thumbprint.size();
-        hashBlob.pbData = (PBYTE)thumbprint.c_str();
-
-        pCert = CertFindCertificateInStore(hStore, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_HASH, &hashBlob, NULL);
-
-        if (!pCert)
-        {
-            goto missing;
-        }
-
-        SYSTEMTIME sysNow;
-        FILETIME ftNow;
-        GetSystemTime(&sysNow);
-        SystemTimeToFileTime(&sysNow, &ftNow);
-
-        if (CompareFileTime(&ftNow, &pCert->pCertInfo->NotAfter) > 0)
-        {
-            goto missing;
-        }
-
-        return S_OK;
-    }
-
-missing:
-    if (bGenerateIfMissing)
-    {
-        if (FAILED(hr = wlidsvc::deviceid::FetchDeviceCertificate()))
-        {
-            goto cleanup;
-        }
-
-        hr = FindDeviceCert(FALSE, device_cert_thumb);
-        goto cleanup;
-    }
-
-    hr = CRYPT_E_NOT_FOUND;
-
-cleanup:
-    if (pCert != nullptr)
-        CertFreeCertificateContext(pCert);
-    if (hStore != nullptr)
-        CertCloseStore(hStore, 0);
-
-    return hr;
-}
-
 IOCTL_FUNC(GetDeviceId)
 {
     VALIDATE_PARAMETER(dwLenIn != sizeof(IOCTL_GET_DEVICE_ID_ARGS));
@@ -1050,37 +988,29 @@ IOCTL_FUNC(GetDeviceId)
     auto *pArgs = reinterpret_cast<PIOCTL_GET_DEVICE_ID_ARGS>(pBufIn);
     auto *pReturn = reinterpret_cast<PIOCTL_GET_DEVICE_ID_RETURN>(pBufOut);
 
-    token_t token{};
-    token_store_t token_store{storage::db_path(), true};
-
-    config_store_t cs{storage::db_path(), true};
-    auto default_id = cs.get("DefaultID");
-    if (default_id.empty())
-    {
-        return S_FALSE;
-    }
-
-    BYTE rgDeviceId[20];
-    DWORD cbDeviceId = 20;
-    char deviceIdHex[41]{0};
-
     HRESULT hr;
-    if (FAILED(hr = GetDeviceUniqueID((LPBYTE)PERSONALISATION_VALUE, strlen(PERSONALISATION_VALUE), 1, rgDeviceId, &cbDeviceId)))
-    {
-        LOG("GetDeviceUniqueID returned 0x%08x", hr);
-        return hr;
-    }
 
-    util::bytes_to_hex(rgDeviceId, cbDeviceId, deviceIdHex);
-    std::wstring device_id = util::utf8_to_wstring(deviceIdHex);
-    VALIDATE_PARAMETER(device_id.size() >= 128);
-    wcsncpy(pReturn->szDeviceId, device_id.c_str(), 128);
-    pReturn->szDeviceId[device_id.size()] = '\0';
+    {
+        config_store_t ct{storage::db_path()};
+        std::wstring str = ct.get(L"DeviceDefaultID");
+        if (str.empty())
+        {
+            // TODO: i do not know if this is necessary but we're going to do the provisioning now
+            if (FAILED(hr = wlidsvc::deviceid::EnsureProvisionedAsync()))
+            {
+                return hr;
+            }
+
+            str = ct.get(L"DeviceDefaultID");
+        }
+
+        wcsncpy(pReturn->szDeviceId, str.data(), 128);
+    }
 
     if (pArgs->bNeedsCert)
     {
         std::string device_cert_thumb;
-        if (FAILED(hr = FindDeviceCert(TRUE, device_cert_thumb)))
+        if (FAILED(hr = wlidsvc::deviceid::FindDeviceCert(TRUE, device_cert_thumb)))
         {
             return hr;
         }

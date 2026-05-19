@@ -20,6 +20,11 @@ namespace wlidsvc::net
         {
             return {curl_easy_strerror(curl_error)};
         }
+
+        const bool ok() const 
+        {
+            return curl_error == CURLE_OK;
+        }
     };
 
     class client_t

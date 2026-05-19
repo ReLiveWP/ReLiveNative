@@ -5,6 +5,7 @@
 #include "types.h"
 
 #include <string>
+#include <optional>
 
 struct sqlite3;
 struct sqlite3_stmt;
@@ -127,7 +128,49 @@ namespace wlidsvc::storage
             return retrieve(wlidsvc::util::wstring_to_utf8(identity), wlidsvc::util::wstring_to_utf8(service), out_token);
         }
 
-        // todo: C++ iterators seem like hell
+        bool remove(const token_t &token);
+
+        struct forward_iterator
+        {
+            using iterator_category = std::forward_iterator_tag;
+            using value_type = token_t;
+            using difference_type = std::ptrdiff_t;
+            using pointer = const token_t *;
+            using reference = const token_t &;
+
+            forward_iterator(token_store_t &store, const std::optional<std::string> &identity, bool is_end = false);
+            ~forward_iterator();
+
+            inline bool operator==(const forward_iterator &other) const
+            {
+                return !(*this != other);
+            }
+            bool operator!=(const forward_iterator &other) const;
+            token_t operator*() const;
+            forward_iterator &operator++();
+            forward_iterator operator++(int)
+            {
+                forward_iterator temp = *this;
+                ++(*this);
+                return temp;
+            }
+
+        private:
+            token_store_t &store;
+            std::optional<token_t> current_token;
+            std::optional<std::string> identity;
+            sqlite3_stmt *stmt = nullptr;
+        };
+
+        inline forward_iterator begin()
+        {
+            return forward_iterator(*this, std::nullopt);
+        }
+
+        inline forward_iterator end()
+        {
+            return forward_iterator(*this, std::nullopt, true);
+        }
     };
 
     class identity_token_store_t : protected base_store_t
@@ -162,7 +205,7 @@ namespace wlidsvc::storage
     };
 
     constexpr LPCWSTR g_configDBFolder = TEXT("\\ReLiveWP");
-#ifdef IS_PRODUCTION_BUILD
+#if IS_PRODUCTION_BUILD
     constexpr LPCWSTR g_configDBName = TEXT("\\wlidstor.db");
 #else
     constexpr LPCWSTR g_configDBName = TEXT("\\wlidstor-int.db");

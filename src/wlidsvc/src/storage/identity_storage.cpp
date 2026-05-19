@@ -52,7 +52,7 @@ namespace wlidsvc::storage
 
         sqlite3_bind_text(stmt, 1, identity.identity.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int64(stmt, 2, identity.puid);
-        sqlite3_bind_text(stmt, 3, identity.cuid.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, identity.cid.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 4, identity.email.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 5, identity.display_name.c_str(), -1, SQLITE_TRANSIENT);
         if (step_and_finalize(stmt) != SQLITE_DONE)
@@ -83,7 +83,7 @@ namespace wlidsvc::storage
         {
             out_identity.identity = identity;
             out_identity.puid = sqlite3_column_int64(stmt, 0);
-            out_identity.cuid = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
+            out_identity.cid = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
             out_identity.email = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 2));
             out_identity.display_name = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 3));
             sqlite3_finalize(stmt);

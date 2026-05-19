@@ -14,6 +14,18 @@
 #include <mbedtls/psa_util.h>
 #include <sqlite3.h>
 
+#include <tlhelp32.h>
+
+#ifndef TH32CS_GETALLMODS
+#define TH32CS_GETALLMODS 0
+#endif
+
+#if _WIN64
+#define ADDRESS_PRINTF L"0x%016x"
+#else
+#define ADDRESS_PRINTF L"0x%08x"
+#endif
+
 using namespace wlidsvc;
 using namespace wlidsvc::globals;
 using namespace wlidsvc::storage;
@@ -22,17 +34,72 @@ extern "C"
 {
     LONG WINAPI WLI_ExceptionHandler(struct _EXCEPTION_POINTERS *pExceptionInfo)
     {
-        LOG("Is this thing on?? ExceptionHandler called in service!!! ExceptionCode=0x%08x; ExceptionAddress=0x%08x; ExceptionInformation0x%08x;",
+        LOG("Is this thing on?? ExceptionHandler called in service!!! ExceptionCode=0x%08x; ExceptionAddress=0x%08x; ExceptionInformation=0x%08x;",
             pExceptionInfo->ExceptionRecord->ExceptionCode,
             pExceptionInfo->ExceptionRecord->ExceptionAddress,
             pExceptionInfo->ExceptionRecord->ExceptionInformation);
+
+        if (pExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)
+        {
+            const char* attempt = pExceptionInfo->ExceptionRecord->ExceptionInformation[0] ? "READ" : "WRITE";
+            LOG("Attempt to %s at address " ADDRESS_PRINTF, attempt, pExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+        }
+        // else
+        // {
+        //     return EXCEPTION_CONTINUE_SEARCH;
+        // }
+
+        HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS | TH32CS_SNAPMODULE | TH32CS_GETALLMODS, 0);
+        if (hSnapshot == INVALID_HANDLE_VALUE)
+        {
+            LOG("%s", "Failed to CreateToolhelp32Snapshot, you're going in blind!!");
+            return EXCEPTION_CONTINUE_SEARCH;
+        }
+
+#if defined(UNDER_CE) && defined(ARM)
+        auto ContextRecord = pExceptionInfo->ContextRecord;
+        auto SP = (DWORD_PTR *)ContextRecord->Sp;
+        LOG_WIDE(L"Registers: R0=" ADDRESS_PRINTF L"; R1=" ADDRESS_PRINTF L"; R2=" ADDRESS_PRINTF L"; R3=" ADDRESS_PRINTF L";\n"
+                 L"R4=" ADDRESS_PRINTF L"; R5=" ADDRESS_PRINTF L"; R6=" ADDRESS_PRINTF L"; R7=" ADDRESS_PRINTF L";\n"
+                 L"R8=" ADDRESS_PRINTF L"; R9=" ADDRESS_PRINTF L"; R10=" ADDRESS_PRINTF L"; R11=" ADDRESS_PRINTF L";\n"
+                 L"R12=" ADDRESS_PRINTF L"; SP=" ADDRESS_PRINTF L"; LR=" ADDRESS_PRINTF L"; PC=" ADDRESS_PRINTF L"; PSR=" ADDRESS_PRINTF L";",
+                 ContextRecord->R0, ContextRecord->R1, ContextRecord->R2, ContextRecord->R3,
+                 ContextRecord->R4, ContextRecord->R5, ContextRecord->R6, ContextRecord->R7,
+                 ContextRecord->R8, ContextRecord->R9, ContextRecord->R10, ContextRecord->R11,
+                 ContextRecord->R12, ContextRecord->Sp, ContextRecord->Lr, ContextRecord->Pc, ContextRecord->Psr);
+#elif defined(__x86_64__)
+        auto ContextRecord = pExceptionInfo->ContextRecord;
+        auto SP = (DWORD_PTR *)ContextRecord->Rsp;
+#endif
+
+        MODULEENTRY32 mod = {0};
+        PROCESSENTRY32 proc{0};
+        mod.dwSize = sizeof(MODULEENTRY32);
+        proc.dwSize = sizeof(PROCESSENTRY32);
+
+        if (Module32First(hSnapshot, &mod))
+        {
+            do
+            {
+                LOG(L"Module: %s @ " ADDRESS_PRINTF " size: " ADDRESS_PRINTF, util::wstring_to_utf8(mod.szModule).c_str(), mod.modBaseAddr, mod.modBaseSize);
+            } while (Module32Next(hSnapshot, &mod));
+        }
+
+#ifdef UNDER_CE
+        CloseToolhelp32Snapshot(hSnapshot);
+#else
+        CloseHandle(hSnapshot);
+#endif
+
         return EXCEPTION_CONTINUE_SEARCH;
     }
 
-    extern void init_errno(void);
+    // extern void init_errno(void);
+
     DWORD_PTR WLI_Init(DWORD_PTR hContext)
     {
-        init_errno();
+        // init_errno();
+
         psa_crypto_init();
         curl_global_init(CURL_GLOBAL_DEFAULT);
         InitializeCriticalSection(&g_wlidSvcReadyCritSect);
@@ -41,8 +108,6 @@ extern "C"
         g_tlsIsImpersonatedIdx = TlsAlloc();
 
         LOG("%s", "WLI_Init called!");
-
-        
 
         {
             util::critsect_t cs{&g_wlidSvcReadyCritSect};
@@ -85,7 +150,9 @@ extern "C"
 
     BOOL WLI_Close(DWORD_PTR hContext)
     {
+        LOG("WLI_Close called for context %p", hContext);
         delete ((wlidsvc::handle_ctx_t *)hContext);
+        LOG("Context %p closed, remaining instance count: %d", hContext, InterlockedDecrement(&g_instanceCount));
         return TRUE;
     }
 

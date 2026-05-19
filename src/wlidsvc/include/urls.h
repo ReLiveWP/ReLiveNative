@@ -10,11 +10,13 @@
 
 namespace wlidsvc::config
 {
-#ifdef IS_PRODUCTION_BUILD
+#if IS_PRODUCTION_BUILD
     static constexpr const char *g_requestTokensEndpoint = "https://login.relivewp.net/auth/request_tokens";
+    static constexpr const char *g_registerDeviceEndpoint = "http://login.relivewp.net/auth/register_device";
     static constexpr const char *g_provisionDeviceEndpoint = "https://login.relivewp.net/auth/provision_device";
 #else
     static constexpr const char *g_requestTokensEndpoint = "http://login.int.relivewp.net/auth/request_tokens";
+    static constexpr const char *g_registerDeviceEndpoint = "http://login.int.relivewp.net/auth/register_device";
     static constexpr const char *g_provisionDeviceEndpoint = "http://login.int.relivewp.net/auth/provision_device";
 #endif
 }

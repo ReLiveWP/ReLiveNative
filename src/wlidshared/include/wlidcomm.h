@@ -199,7 +199,7 @@ typedef struct
 
 typedef struct
 {
-    WCHAR szToken[1024];
+    WCHAR szToken[4096];
     DWORD dwResultFlags;
     // TODO: BYTE* pbSessionKey
     // TODO: DWORD cbSessionKeyLength

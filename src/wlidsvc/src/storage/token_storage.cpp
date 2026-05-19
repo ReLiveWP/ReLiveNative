@@ -85,4 +85,149 @@ namespace wlidsvc::storage
         sqlite3_finalize(stmt);
         return false;
     }
+
+    bool token_store_t::remove(const token_t &token)
+    {
+        if (is_readonly)
+        {
+            LOG("Attempted to remove token from read-only store: %s", token.identity.c_str());
+            return false;
+        }
+
+        util::critsect_t cs{&globals::g_dbCritSect};
+
+        const char *sql = "DELETE FROM tokens WHERE identity = ? AND service = ?;";
+        sqlite3_stmt *stmt;
+        if (prepare(sql, &stmt) != SQLITE_OK)
+        {
+            LOG("Failed to prepare SQL statement for removing token. %s", sqlite3_errmsg(db));
+            return false;
+        }
+
+        sqlite3_bind_text(stmt, 1, token.identity.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, token.service.c_str(), -1, SQLITE_TRANSIENT);
+
+        if (step_and_finalize(stmt) != SQLITE_DONE)
+        {
+            LOG("Failed to remove token: %s", sqlite3_errmsg(db));
+            return false;
+        }
+
+        LOG("Removed token for identity: %s, service: %s", token.identity.c_str(), token.service.c_str());
+
+        return true;
+    }
+
+    token_store_t::forward_iterator::forward_iterator(token_store_t &store, const std::optional<std::string> &identity, bool is_end)
+        : store(store), identity(identity)
+    {
+        if (is_end)
+        {
+            stmt = nullptr;
+            return;
+        }
+
+        std::string sql = "SELECT identity, service, token, type, expires, created FROM tokens";
+        if (identity.has_value())
+        {
+            sql += " WHERE identity = ?";
+        }
+        sql += ";";
+
+        if (store.prepare(sql.c_str(), &stmt) != SQLITE_OK)
+        {
+            LOG("Failed to prepare SQL statement for token iterator. %s", sqlite3_errmsg(store.db));
+            stmt = nullptr;
+            return;
+        }
+
+        if (identity.has_value())
+        {
+            sqlite3_bind_text(stmt, 1, identity->c_str(), -1, SQLITE_TRANSIENT);
+        }
+
+        ++(*this);
+    }
+
+    token_store_t::forward_iterator::~forward_iterator()
+    {
+        if (stmt)
+        {
+            sqlite3_finalize(stmt);
+        }
+    }
+
+    token_store_t::forward_iterator &token_store_t::forward_iterator::operator++()
+    {
+        if (stmt == nullptr)
+        {
+            current_token.reset();
+            return *this;
+        }
+
+        int rc = sqlite3_step(stmt);
+        if (rc == SQLITE_ROW)
+        {
+            token_t token;
+            token.identity = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+            token.service = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
+            token.token = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 2));
+            token.type = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 3));
+            token.expires = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 4));
+            token.created = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 5));
+
+            current_token = token;
+        }
+        else
+        {
+            current_token.reset();
+            sqlite3_finalize(stmt);
+            stmt = nullptr; // now it will compare equal to end()
+        }
+
+        return *this;
+    }
+
+    bool token_store_t::forward_iterator::operator!=(const forward_iterator &other) const
+    {
+        if (stmt == nullptr && other.stmt == nullptr)
+        {
+            return false;
+        }
+
+        if (stmt == nullptr || other.stmt == nullptr)
+        {
+            return true;
+        }
+
+        // iterators are not equal if they are from different stores or have different identities
+        if (&store != &other.store || identity != other.identity)
+        {
+            return true;
+        }
+
+        // if both iterators are valid, compare their current tokens
+        if (current_token.has_value() && other.current_token.has_value())
+        {
+            return !(current_token->identity == other.current_token->identity &&
+                     current_token->service == other.current_token->service &&
+                     current_token->token == other.current_token->token &&
+                     current_token->type == other.current_token->type &&
+                     current_token->expires == other.current_token->expires &&
+                     current_token->created == other.current_token->created);
+        }
+
+        // one iterator is valid and the other is not, so they are not equal
+        return true;
+    }
+
+    token_t token_store_t::forward_iterator::operator*() const
+    {
+        if (current_token.has_value())
+        {
+            return current_token.value();
+        }
+
+        return {};
+    }
 }

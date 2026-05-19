@@ -1,12 +1,12 @@
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR arm)
 
-set(CMAKE_C_COMPILER arm-mingw32ce-gcc)
-set(CMAKE_CXX_COMPILER arm-mingw32ce-g++)
-set(CMAKE_RC_COMPILER arm-mingw32ce-windres)
+set(TOOLCHAIN_PREFIX arm-mingw32ce)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv7-a+fp -D_WIN32_WINNT=0x0502 -DUNICODE -Wl,--enable-auto-import -fstack-protector-strong")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv7-a+fp -D_WIN32_WINNT=0x0502 -DUNICODE -Wl,--enable-auto-import -fstack-protector-strong -fno-exceptions -fno-rtti")
+set(ADDITIONAL_LINK_ARGS "-Wl,--subsystem,wince:7.10")
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv7-a+fp -D_WIN32_WINNT=0x0502 -DUNICODE -Wl,--enable-auto-import -fstack-protector-strong -ffunction-sections -Wl,--gc-sections ${ADDITIONAL_LINK_ARGS}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv7-a+fp -D_WIN32_WINNT=0x0502 -DUNICODE -Wl,--enable-auto-import -fstack-protector-strong -fno-exceptions -fno-rtti -ffunction-sections -Wl,--gc-sections ${ADDITIONAL_LINK_ARGS}")
 
 set(CMAKE_INSTALL_PREFIX /opt/cegcc/arm-mingw32ce)
 

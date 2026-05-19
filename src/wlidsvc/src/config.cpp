@@ -27,7 +27,7 @@ namespace wlidsvc::config
     static HRESULT DoClientConfigInitialization(BOOL isNested);
 
     constexpr LPCWSTR g_clientConfigDBFolder = TEXT("\\Volatile\\ReLiveWP");
-#ifdef IS_PRODUCTION_BUILD
+#if IS_PRODUCTION_BUILD
     constexpr LPCWSTR g_clientConfigDBName = TEXT("\\wlidconf.db");
 #else
     constexpr LPCWSTR g_clientConfigDBName = TEXT("\\wlidconf-int.db");
@@ -92,14 +92,14 @@ namespace wlidsvc::config
     {
         return environment_t::production;
         
-#ifdef IS_PRODUCTION_BUILD
+#if IS_PRODUCTION_BUILD
         return environment_t::production;
 #else
         return environment_t::internal;
 #endif
     }
 
-    static const std::string log_endpoint_default = "ws://172.16.0.2:5678/";
+    static const std::string log_endpoint_default = "ws://10.0.0.7:5678/";
     const std::string log_endpoint()
     {
         config_store_t cs{db_path()};
@@ -110,6 +110,12 @@ namespace wlidsvc::config
     {
         config_store_t cs{db_path()};
         return utf8_to_wstring(cs.get("DefaultID"));
+    }
+
+    const std::wstring device_id()
+    {
+        config_store_t cs{db_path()};
+        return utf8_to_wstring(cs.get("DeviceDefaultID"));
     }
 
     // static size_t OnWriteFile(void *contents, size_t size, size_t nmemb, HANDLE hFile)

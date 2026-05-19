@@ -1,6 +1,8 @@
 #pragma once
 #include <windows.h>
 
+#include <string>
+
 extern "C"
 {
     HRESULT GetDeviceUniqueID(
@@ -13,7 +15,10 @@ extern "C"
 
 namespace wlidsvc::deviceid
 {
-    HRESULT GenerateProvisioningCertificateRequest(LPSTR *szCertRequest, DWORD *pcbCertRequest);
-    HRESULT StoreProvisioningCertificate(LPCSTR szCertificate);
-    HRESULT FetchDeviceCertificate();
+    // HRESULT GenerateProvisioningCertificateRequest(LPSTR *szCertRequest, DWORD *pcbCertRequest);
+    // HRESULT StoreProvisioningCertificate(LPCSTR szCertificate);
+    // HRESULT FetchDeviceCertificate();
+
+    HRESULT EnsureProvisionedAsync();
+    HRESULT FindDeviceCert(BOOL bGenerateIfMissing, std::string &device_cert_thumb);
 }

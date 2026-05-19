@@ -138,8 +138,7 @@ HRESULT serialise_logon_request(identity_ctx_t *identityCtx, const std::string &
     json credentials = json::object();
     for (auto &&credential : identityCtx->credentials)
     {
-        if (!(credential.first == L"ps:password" && credential.second.find_first_not_of('*') == std::wstring::npos))
-            credentials[util::wstring_to_utf8(credential.first)] = util::wstring_to_utf8(credential.second);
+        credentials[util::wstring_to_utf8(credential.first)] = util::wstring_to_utf8(credential.second);
     }
 
     if (credentials.size() == 0)
@@ -580,10 +579,8 @@ IOCTL_FUNC(SetCredential)
     auto credentialType = std::wstring(pArgs->szCredentialType);
     auto credentialValue = std::wstring(pArgs->szCredential);
 
-    if (credentialType == L"ps:password" && credentialValue.find_first_not_of('*') == std::wstring::npos)
-        identityCtx->use_sts_token = true;
-    else
-        identityCtx->credentials[credentialType] = credentialValue;
+    identityCtx->use_sts_token = false;
+    identityCtx->credentials[credentialType] = credentialValue;
 
     LOG("SetCredential: hIdentity=0x%08hx; szCredentialType=%s; szCredential=REDACTED;",
         pArgs->hIdentity, util::wstring_to_utf8(credentialType).c_str());

@@ -219,14 +219,14 @@ namespace wlidsvc::deviceid
             sigAlg.pszObjId = szOID_RSA_SHA1RSA;
 
             DWORD csrSize = 0;
-            if (!CryptSignAndEncodeCertificate(hProv, 0, X509_ASN_ENCODING, X509_CERT_REQUEST_TO_BE_SIGNED, &req, &sigAlg, nullptr, nullptr, &csrSize))
+            if (!CryptSignAndEncodeCertificate(hKey, 0, X509_ASN_ENCODING, X509_CERT_REQUEST_TO_BE_SIGNED, &req, &sigAlg, nullptr, nullptr, &csrSize))
             {
                 LOG("CryptSignAndEncodeCertificate failed to get size 0x%08x;", GetLastError());
                 return HRESULT_FROM_WIN32(GetLastError());
             }
 
             std::vector<BYTE> csr(csrSize);
-            if (!CryptSignAndEncodeCertificate(hProv, 0, X509_ASN_ENCODING, X509_CERT_REQUEST_TO_BE_SIGNED, &req, &sigAlg, nullptr, csr.data(), &csrSize))
+            if (!CryptSignAndEncodeCertificate(hKey, 0, X509_ASN_ENCODING, X509_CERT_REQUEST_TO_BE_SIGNED, &req, &sigAlg, nullptr, csr.data(), &csrSize))
             {
                 LOG("CryptSignAndEncodeCertificate failed 0x%08x;", GetLastError());
                 return HRESULT_FROM_WIN32(GetLastError());

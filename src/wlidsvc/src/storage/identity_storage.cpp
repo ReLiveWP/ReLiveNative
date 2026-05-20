@@ -57,11 +57,21 @@ namespace wlidsvc::storage
         sqlite3_bind_text(stmt, 5, identity.display_name.c_str(), -1, SQLITE_TRANSIENT);
         if (step_and_finalize(stmt) != SQLITE_DONE)
         {
-            LOG("Failed to store identity: %s", sqlite3_errmsg(db));
+            LOG("Failed to store identity: %s (PUID: %llu, CUID: %s, Email: %s), %s",
+                identity.identity.c_str(),
+                identity.puid,
+                identity.cid.c_str(),
+                identity.email.c_str(),
+                sqlite3_errmsg(db));
+
             return false;
         }
 
-        LOG("Stored identity: %s", identity.identity.c_str());
+        LOG("Stored identity: %s (PUID: %llu, CUID: %s, Email: %s)",
+            identity.identity.c_str(),
+            identity.puid,
+            identity.cid.c_str(),
+            identity.email.c_str());
 
         return true;
     }

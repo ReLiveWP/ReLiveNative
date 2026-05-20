@@ -44,10 +44,10 @@ extern "C"
             const char* attempt = pExceptionInfo->ExceptionRecord->ExceptionInformation[0] ? "READ" : "WRITE";
             LOG("Attempt to %s at address " ADDRESS_PRINTF, attempt, pExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
         }
-        // else
-        // {
-        //     return EXCEPTION_CONTINUE_SEARCH;
-        // }
+        else
+        {
+            return EXCEPTION_CONTINUE_SEARCH;
+        }
 
         HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS | TH32CS_SNAPMODULE | TH32CS_GETALLMODS, 0);
         if (hSnapshot == INVALID_HANDLE_VALUE)

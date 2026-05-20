@@ -30,6 +30,16 @@ namespace wlidsvc
         std::string type;    // "JWT", "X509v3", etc.
         std::string expires; // ISO 8601 format
         std::string created; // ISO 8601 format
+
+        template <typename T>
+        static void from_json(token_t &t, T &token)
+        {
+            t.service = token["service_target"].template get<std::string>();
+            t.token = token["token"].template get<std::string>();
+            t.type = token["token_type"].template get<std::string>();
+            t.created = token["created"].template get<std::string>();
+            t.expires = token["expires"].template get<std::string>();
+        }
     };
 
     struct identity_ctx_t

@@ -12,6 +12,7 @@
 #include "urls.h"
 #include "storage.h"
 #include "deviceid.h"
+#include "client.h"
 
 #include <algorithm>
 
@@ -240,21 +241,7 @@ HRESULT parse_logon_response(identity_ctx_t *identityCtx, std::string &body)
         identity.display_name = username;
 
         if (!identity_store.store(identity))
-        {
-            LOG("Failed to store identity: %s (PUID: %llu, CUID: %s, Email: %s)",
-                identity.identity.c_str(),
-                identity.puid,
-                identity.cid.c_str(),
-                identity.email.c_str());
-
             return E_FAIL;
-        }
-
-        LOG("Stored identity: %s (PUID: %llu, CUID: %s, Email: %s)",
-            identity.identity.c_str(),
-            identity.puid,
-            identity.cid.c_str(),
-            identity.email.c_str());
     }
 
     {
@@ -272,29 +259,11 @@ HRESULT parse_logon_response(identity_ctx_t *identityCtx, std::string &body)
             const auto &token = tokens[i];
 
             token_t t;
+            token_t::from_json(t, token);
             t.identity = util::wstring_to_utf8(identityCtx->member_name);
-            t.service = token["service_target"].get<std::string>();
-            t.token = token["token"].get<std::string>();
-            t.type = token["token_type"].get<std::string>();
-            t.created = token["created"].get<std::string>();
-            t.expires = token["expires"].get<std::string>();
 
             if (!token_store.store(t))
-            {
-                LOG("Failed to store token for %s: %s (Type: %s, Expires: %s)",
-                    username.c_str(),
-                    t.service.c_str(),
-                    t.type.c_str(),
-                    t.expires.c_str());
-
                 continue;
-            }
-
-            LOG("Stored token for %s: %s (Type: %s, Expires: %s)",
-                username.c_str(),
-                t.service.c_str(),
-                t.type.c_str(),
-                t.expires.c_str());
         }
     }
 
@@ -751,28 +720,12 @@ IOCTL_FUNC(AuthIdentityToService)
 
     // LOG("AuthIdentityToService data: %s", logon_data_str.c_str());
 
-    std::vector<std::string> additional_headers{};
-    if (identityCtx->use_sts_token)
+    net::result_t result{};
+    rest::reliveid_client_t client{identityCtx};
+    if (FAILED(hr = client.post(rst_endpoint, logon_data_str, result)))
     {
-        token_t token;
-        token_store_t token_store{storage::db_path()};
-        if (token_store.retrieve(identityCtx->member_name, L"http://Passport.NET/tb", token))
-            additional_headers.push_back("Authorization: Bearer " + token.token);
-    }
-
-    net::client_t client{};
-    net::result_t result = client.post(rst_endpoint, logon_data_str, "application/json", additional_headers);
-    if (result.curl_error != CURLE_OK)
-    {
-        return HRESULT_FROM_CURLE(result.curl_error);
-    }
-
-    // LOG("Received response: %s", result.body.c_str());
-
-    if (result.status_code != 200 && result.status_code != 401)
-    {
-        LOG("LogonIdentityEx failed with status code %ld", result.status_code);
-        return HRESULT_FROM_HTTP(result.status_code);
+        LOG("Failed to send logon request: 0x%08x", hr);
+        return hr;
     }
 
     if (FAILED(hr = parse_logon_response(identityCtx, result.body)))
@@ -803,28 +756,12 @@ IOCTL_FUNC(AuthIdentityToServiceEx)
         return hr;
     }
 
-    std::vector<std::string> additional_headers{};
-    if (identityCtx->use_sts_token)
+    net::result_t result{};
+    rest::reliveid_client_t client{identityCtx};
+    if (FAILED(hr = client.post(rst_endpoint, data, result)))
     {
-        token_t token;
-        token_store_t token_store{storage::db_path()};
-        if (token_store.retrieve(identityCtx->member_name, L"http://Passport.NET/tb", token))
-            additional_headers.push_back("Authorization: Bearer " + token.token);
-    }
-
-    net::client_t client{};
-    net::result_t result = client.post(rst_endpoint, data, "application/json", additional_headers);
-    if (result.curl_error != CURLE_OK)
-    {
-        return HRESULT_FROM_CURLE(result.curl_error);
-    }
-
-    // LOG("Received response: %s", result.body.c_str());
-
-    if (result.status_code != 200 && result.status_code != 401)
-    {
-        LOG("LogonIdentityEx failed with status code %ld", result.status_code);
-        return HRESULT_FROM_HTTP(result.status_code);
+        LOG("Failed to send logon request: 0x%08x", hr);
+        return hr;
     }
 
     if (FAILED(hr = parse_logon_response(identityCtx, result.body)))

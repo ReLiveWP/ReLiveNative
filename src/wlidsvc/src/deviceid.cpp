@@ -331,7 +331,7 @@ namespace wlidsvc::deviceid
 
             net::client_t client{};
             net::result_t result = client.post(rst_endpoint, body, "application/json", additional_headers);
-            if (result.ok())
+            if (!result.ok())
             {
                 return HRESULT_FROM_CURLE(result.curl_error);
             }
@@ -434,20 +434,8 @@ namespace wlidsvc::deviceid
 
                 if (!identity_store.store(identity))
                 {
-                    LOG("Failed to store identity: %s (PUID: %llu, CUID: %s, Email: %s)",
-                        identity.identity.c_str(),
-                        identity.puid,
-                        identity.cid.c_str(),
-                        identity.email.c_str());
-
                     return E_FAIL;
                 }
-
-                LOG("Stored identity: %s (PUID: %llu, CUID: %s, Email: %s)",
-                    identity.identity.c_str(),
-                    identity.puid,
-                    identity.cid.c_str(),
-                    identity.email.c_str());
             }
 
             if (!response.contains("security_tokens") || !response["security_tokens"].is_array())
@@ -464,12 +452,8 @@ namespace wlidsvc::deviceid
                     const auto &token = tokens[i];
 
                     token_t t;
+                    token_t::from_json(t, token);
                     t.identity = identity_json["username"].get<std::string>();
-                    t.service = token["service_target"].get<std::string>();
-                    t.token = token["token"].get<std::string>();
-                    t.type = token["token_type"].get<std::string>();
-                    t.created = token["created"].get<std::string>();
-                    t.expires = token["expires"].get<std::string>();
 
                     if (!token_store.store(t))
                     {

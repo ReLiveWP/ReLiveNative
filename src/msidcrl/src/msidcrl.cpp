@@ -76,7 +76,11 @@ extern "C"
         }
 
         if (FAILED(hr = DeviceIoControl(hDriver, IOCTL_WLIDSVC_INIT_HANDLE, &args, sizeof(IOCTL_INIT_HANDLE_ARGS), NULL, 0, NULL, NULL)))
+        {
+            CloseHandle(hDriver);
+            g_hDriver = NULL;
             return hr;
+        }
 
         return S_OK;
 
@@ -190,7 +194,7 @@ extern "C"
         if (ppbSessionKey != nullptr)
         {
             if (szServicePolicy != nullptr &&
-                (wcsicmp(szServicePolicy, L"MBI_KEY") || wcsicmp(szServicePolicy, L"HBI_KEY")))
+                (wcsicmp(szServicePolicy, L"MBI_KEY") == 0 || wcsicmp(szServicePolicy, L"HBI_KEY") == 0))
             {
                 *ppbSessionKey = (PBYTE)calloc(24, sizeof(BYTE));
 
@@ -298,6 +302,8 @@ extern "C"
             return hr;
 
         PENUM_IDENTITY_CREDENTIALS pEnumCreds = (PENUM_IDENTITY_CREDENTIALS)calloc(1, sizeof(ENUM_IDENTITY_CREDENTIALS));
+        if (pEnumCreds == nullptr)
+            return E_OUTOFMEMORY;
 
         BYTE *pMapView;
         if (retVal.dwIdentities != 0)
@@ -307,6 +313,7 @@ extern "C"
             HANDLE hMap = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, retVal.cbIdentities, szGuid);
             if (hMap == NULL)
             {
+                free(pEnumCreds);
                 Server_CloseEnumIdentitiesHandle(retVal.hServerHandle);
                 LOG_MESSAGE_FMT(TEXT("OpenFileMapping failed: %d"), GetLastError());
                 return HRESULT_FROM_WIN32(GetLastError());
@@ -316,6 +323,7 @@ extern "C"
             if (pMapView == NULL)
             {
                 CloseHandle(hMap);
+                free(pEnumCreds);
                 Server_CloseEnumIdentitiesHandle(retVal.hServerHandle);
                 LOG_MESSAGE_FMT(TEXT("MapViewOfFile failed: %d"), GetLastError());
                 return HRESULT_FROM_WIN32(GetLastError());
@@ -329,6 +337,17 @@ extern "C"
             for (int i = 0; i < retVal.dwIdentities; i++)
             {
                 ENUM_IDENTITY_CREDENTIALS_ITEM *newItem = (ENUM_IDENTITY_CREDENTIALS_ITEM *)calloc(1, sizeof(ENUM_IDENTITY_CREDENTIALS_ITEM));
+                if (newItem == nullptr)
+                {
+                    // Unwind what we've allocated so far.
+                    ENUM_IDENTITY_CREDENTIALS_ITEM *cur = root;
+                    while (cur) { auto *next = cur->next; free(cur); cur = next; }
+                    UnmapViewOfFile(pMapView);
+                    CloseHandle(hMap);
+                    free(pEnumCreds);
+                    Server_CloseEnumIdentitiesHandle(retVal.hServerHandle);
+                    return E_OUTOFMEMORY;
+                }
                 if (root == NULL)
                     root = newItem;
 
@@ -372,6 +391,8 @@ extern "C"
 
         DWORD len = wcslen(pEnumCreds->current->szIdentity);
         LPWSTR wszMemberName = (LPWSTR)calloc(len + 1, sizeof(WCHAR));
+        if (wszMemberName == nullptr)
+            return E_OUTOFMEMORY;
         wcscpy(wszMemberName, pEnumCreds->current->szIdentity);
 
         *pwszMemberName = wszMemberName;
@@ -392,8 +413,6 @@ extern "C"
         }
 
         PENUM_IDENTITY_CREDENTIALS pEnumCreds = (PENUM_IDENTITY_CREDENTIALS)hEnum->pEnumCreds;
-        if (pEnumCreds->current == nullptr)
-            return S_FALSE;
 
         PENUM_IDENTITY_CREDENTIALS_ITEM item = pEnumCreds->root;
         do
@@ -706,6 +725,8 @@ extern "C"
 
         auto len = wcslen(sData.szDefaultId);
         auto pszDefaultID = (LPWSTR)calloc((len + 1), sizeof(WCHAR));
+        if (pszDefaultID == nullptr)
+            return E_OUTOFMEMORY;
         wcsncpy(pszDefaultID, sData.szDefaultId, len + 1);
         // pszDefaultID[len] = 0;
 
@@ -750,6 +771,8 @@ extern "C"
         {
             auto len = wcslen(retVal.szDeviceId);
             auto pszDeviceId = (LPWSTR)calloc((len + 1), sizeof(WCHAR));
+            if (pszDeviceId == nullptr)
+                return E_OUTOFMEMORY;
             wcsncpy(pszDeviceId, retVal.szDeviceId, len + 1);
 
             *pwszDeviceId = pszDeviceId;
@@ -884,19 +907,21 @@ extern "C"
                                         NULL, NULL)))
             return hr;
 
-        auto len = wcslen(retVal.szPropertyValue);
+        size_t len = wcslen(retVal.szPropertyValue);
         if (len == 0)
         {
             *szPropertyValue = nullptr;
             return S_FALSE;
         }
 
-        auto pszPropertyValue = (LPWSTR)calloc((len + 1), sizeof(WCHAR));
+        LPWSTR pszPropertyValue = (LPWSTR)calloc((len + 1), sizeof(WCHAR));
         if (pszPropertyValue == nullptr)
             return E_OUTOFMEMORY;
 
         wcscpy(pszPropertyValue, retVal.szPropertyValue);
         pszPropertyValue[len] = L'\0';
+
+        LOG_MESSAGE_FMT(TEXT("GetIdentityPropertyByName: hIdentity=%08hx; szPropertyName=%s; got %s;"), hIdentity, LOG_STRING(szPropertyName), LOG_STRING((LPCWSTR)pszPropertyValue));
 
         *szPropertyValue = pszPropertyValue;
 
@@ -1026,7 +1051,7 @@ extern "C"
     {
         critsect_t cs{&g_hDriverCrtiSec};
 
-        LOG_MESSAGE_FMT(TEXT("[E_NOTIMPL] HasPersistedCredential: hIdentity=%08hx;"), hIdentity);
+        LOG_MESSAGE_FMT(TEXT("[E_NOTIMPL] HasSetCredential: hIdentity=%08hx;"), hIdentity);
         return E_NOTIMPL;
     }
 
@@ -1097,6 +1122,9 @@ extern "C"
         critsect_t cs{&g_hDriverCrtiSec};
 
         LOG_MESSAGE_FMT(TEXT("PersistCredential: hIdentity=%08hx; lpCredType=%s;"), hIdentity, LOG_STRING(lpCredType));
+
+        if (hIdentity == nullptr)
+            return E_INVALIDARG;
 
         IOCTL_PERSIST_CREDENTIAL_ARGS args{};
 
@@ -1176,6 +1204,9 @@ extern "C"
         critsect_t cs{&g_hDriverCrtiSec};
 
         LOG_MESSAGE_FMT(TEXT("SetIdentityProperty: hIdentity=%08hx; Property=%d, szPropertyValue=%s;"), hIdentity, Property, LOG_STRING(szPropertyValue));
+
+        if (hIdentity == nullptr || szPropertyValue == nullptr)
+            return E_INVALIDARG;
 
         IOCTL_SET_IDENTITY_PROPERTY_ARGS args{};
         args.hIdentity = hIdentity->hIdentitySrv;

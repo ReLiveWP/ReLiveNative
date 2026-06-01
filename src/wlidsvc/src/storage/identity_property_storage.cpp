@@ -4,6 +4,9 @@
 
 namespace wlidsvc::storage
 {
+    std::string dpapi_protect(const std::string &plaintext);
+    std::string dpapi_unprotect(const std::string &encoded);
+
     identity_token_store_t::identity_token_store_t(const std::wstring &path, const std::string &identity, bool is_readonly)
         : base_store_t(path, is_readonly), identity(identity)
     {
@@ -38,9 +41,10 @@ namespace wlidsvc::storage
             return false;
         }
 
+        auto protected_value = dpapi_protect(value);
         sqlite3_bind_text(stmt, 1, identity.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 2, key.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 3, value.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, protected_value.c_str(), -1, SQLITE_TRANSIENT);
         if (step_and_finalize(stmt) != SQLITE_DONE)
         {
             LOG("Failed to store identity property: %s", sqlite3_errmsg(db));
@@ -54,14 +58,19 @@ namespace wlidsvc::storage
     {
         const char *sql = "SELECT propvalue FROM identity_properties WHERE identity = ? AND propkey = ?;";
         sqlite3_stmt *stmt;
-        prepare(sql, &stmt);
+        if (prepare(sql, &stmt) != SQLITE_OK)
+        {
+            LOG("Failed to prepare identity_properties get: %s", sqlite3_errmsg(db));
+            return false;
+        }
         sqlite3_bind_text(stmt, 1, identity.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 2, key.c_str(), -1, SQLITE_TRANSIENT);
 
         int rc = sqlite3_step(stmt);
         if (rc == SQLITE_ROW)
         {
-            value = std::string(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
+            const unsigned char *col = sqlite3_column_text(stmt, 0);
+            value = col ? dpapi_unprotect(reinterpret_cast<const char *>(col)) : "";
             sqlite3_finalize(stmt);
             return true;
         }
@@ -74,14 +83,23 @@ namespace wlidsvc::storage
     {
         const char *sql = "SELECT identity FROM identity_properties WHERE propkey = ?;";
         sqlite3_stmt *stmt;
-        prepare(sql, &stmt);
-        sqlite3_bind_text(stmt, 1, util::wstring_to_utf8(credential_type).c_str(), -1, SQLITE_TRANSIENT);
+        if (prepare(sql, &stmt) != SQLITE_OK)
+        {
+            LOG("Failed to prepare find_identities statement: %s", sqlite3_errmsg(db));
+            return false;
+        }
+        std::string cred_utf8 = util::wstring_to_utf8(credential_type);
+        sqlite3_bind_text(stmt, 1, cred_utf8.c_str(), -1, SQLITE_TRANSIENT);
 
         int rc;
         while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
         {
-            std::string identity{reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0))};
-            identities.push_back(util::utf8_to_wstring(identity));
+            const unsigned char *col = sqlite3_column_text(stmt, 0);
+            if (col)
+            {
+                auto unencrypted_token = dpapi_unprotect(reinterpret_cast<const char *>(col));
+                identities.push_back(util::utf8_to_wstring(unencrypted_token));
+            }
         }
 
         sqlite3_finalize(stmt);

@@ -3,15 +3,12 @@
 
 #include "util.h"
 #include "config.h"
+#include "json.h"
 
 #include <nanoprintf.h>
 #include <curl/curl.h>
 
 #include <string>
-
-#include <cerrno>
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
 
 namespace wlidsvc::log
 {
@@ -36,6 +33,11 @@ namespace wlidsvc::log
         va_start(args1, fmt);
 
         char *tmp = wchar_to_char(fmt);
+        if (tmp == nullptr)
+        {
+            va_end(args1);
+            return;
+        }
 
         log_real(tmp, args1);
         va_end(args1);

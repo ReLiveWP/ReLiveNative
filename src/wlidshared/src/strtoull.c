@@ -72,6 +72,13 @@ strtoull(const char *nptr, char **endptr, register int base)
 	/*
 	 * See strtol for comments as to the logic used.
 	 */
+	if (base < 0 || base == 1 || base > 36) {
+		if (endptr != 0)
+			*endptr = (char *)nptr;
+		errno = EINVAL;
+		return 0;
+	}
+
 	do {
 		c = *s++;
 	} while (isspace(c));

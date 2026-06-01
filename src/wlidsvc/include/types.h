@@ -28,23 +28,21 @@ namespace wlidsvc
         std::string service;
         std::string token;
         std::string type;    // "JWT", "X509v3", etc.
-        std::string expires; // ISO 8601 format
         std::string created; // ISO 8601 format
+        std::string expires; // ISO 8601 format
+        bool invalid = false;
 
-        template <typename T>
-        static void from_json(token_t &t, T &token)
-        {
-            t.service = token["service_target"].template get<std::string>();
-            t.token = token["token"].template get<std::string>();
-            t.type = token["token_type"].template get<std::string>();
-            t.created = token["created"].template get<std::string>();
-            t.expires = token["expires"].template get<std::string>();
-        }
+        // Returns false if marked invalid or if the expiry timestamp is in the past.
+        bool is_valid() const;
     };
 
     struct identity_ctx_t
     {
-        identity_ctx_t(handle_ctx_t *lpHandleCtx, LPWSTR szMemberName, DWORD dwFlags);
+        inline identity_ctx_t(std::wstring member_name) : identity_ctx_t(nullptr, member_name.c_str(), 0)
+        {
+        }
+
+        identity_ctx_t(handle_ctx_t *lpHandleCtx, LPCWSTR szMemberName, DWORD dwFlags);
         ~identity_ctx_t();
 
         handle_ctx_t *handle_ctx;

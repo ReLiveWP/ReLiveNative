@@ -13,13 +13,9 @@
 #include "storage.h"
 #include "deviceid.h"
 #include "client.h"
+#include "json.h"
 
 #include <algorithm>
-
-#include <cerrno>
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
-
 #include <base64.hpp>
 
 using namespace wlidsvc;
@@ -58,99 +54,34 @@ using namespace wlidsvc::config;
 #define CERT_SYSTEM_STORE_CURRENT_USER (CERT_SYSTEM_STORE_CURRENT_USER_ID << CERT_SYSTEM_STORE_LOCATION_SHIFT)
 #endif
 
-HRESULT DeserializeRSTParams(GUID gMapParams, DWORD dwSize, LPBYTE *ppBuffer, RSTParams **ppParams)
+HRESULT DeserializeRSTParams(GUID gMapParams, DWORD dwSize, LPBYTE *ppBuffer, RSTParams **ppParams);
+
+HRESULT serialise_logon_request(
+    const identity_ctx_t *identityCtx,
+    const std::string &auth_policy,
+    const GUID &gMapParams,
+    const DWORD dwFileSize,
+    const DWORD dwParamCount,
+    rest::types::security_tokens_request_t &request)
 {
-    if (ppBuffer == nullptr || ppParams == nullptr)
-    {
-        LOG("%s", "Invalid arguments: ppBuffer or ppParams is NULL");
-        return E_INVALIDARG;
-    }
+    request.identity = util::wstring_to_utf8(identityCtx->member_name);
 
-    *ppBuffer = nullptr;
-    *ppParams = nullptr;
-
-    if (IsEqualGUID(gMapParams, GUID{0}))
-    {
-        LOG("%s", "GUID is empty, no parameters to deserialize.");
-        return S_FALSE;
-    }
-
-    WCHAR szGuid[40] = {0};
-    StringFromGUID2(gMapParams, szGuid, 40);
-
-    HANDLE hMap = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, dwSize, szGuid);
-    if (hMap == NULL)
-    {
-        LOG("OpenFileMapping failed: %d", GetLastError());
-        return HRESULT_FROM_WIN32(GetLastError());
-    }
-
-    BYTE *pMapView = (BYTE *)MapViewOfFile(hMap, FILE_MAP_READ, 0, 0, 0);
-    if (pMapView == NULL)
-    {
-        CloseHandle(hMap);
-        LOG("MapViewOfFile failed: %d", GetLastError());
-        return HRESULT_FROM_WIN32(GetLastError());
-    }
-
-    DWORD cbSize = *(DWORD *)pMapView;
-    BYTE *pBuffer = new (std::nothrow) BYTE[cbSize];
-    if (pBuffer == NULL)
-    {
-        UnmapViewOfFile(pMapView);
-        CloseHandle(hMap);
-        return E_OUTOFMEMORY;
-    }
-
-    std::memcpy(pBuffer, pMapView, cbSize);
-    UnmapViewOfFile(pMapView);
-    CloseHandle(hMap);
-
-    // first 4 bytes are the total size, next 4 bytes are the parameter count
-    DWORD dwParamCount = *(DWORD *)(pBuffer + 4);
-    RSTParams *pParams = reinterpret_cast<RSTParams *>(pBuffer + 8);
-    for (int i = 0; i < dwParamCount; ++i)
-    {
-        // fixup the pointers in the RSTParams structure
-        RSTParams *pParam = &pParams[i];
-        if (pParam->szServiceTarget != nullptr)
-            pParam->szServiceTarget = reinterpret_cast<LPWSTR>((DWORD_PTR)pBuffer + (DWORD_PTR)pParam->szServiceTarget);
-        if (pParam->szServicePolicy != nullptr)
-            pParam->szServicePolicy = reinterpret_cast<LPWSTR>((DWORD_PTR)pBuffer + (DWORD_PTR)pParam->szServicePolicy);
-
-        LOG("Param %d: ServiceTarget=%s, ServicePolicy=%s, TokenFlags=%d, TokenParam=%d",
-            i,
-            pParam->szServiceTarget ? util::wstring_to_utf8(pParam->szServiceTarget).c_str() : "NULL",
-            pParam->szServicePolicy ? util::wstring_to_utf8(pParam->szServicePolicy).c_str() : "NULL",
-            pParam->dwTokenFlags,
-            pParam->dwTokenParam);
-    }
-
-    *ppBuffer = pBuffer;
-    *ppParams = pParams;
-
-    LOG("Deserialized %d parameters from the buffer.", dwParamCount);
-    return S_OK;
-}
-
-HRESULT serialise_logon_request(identity_ctx_t *identityCtx, const std::string &auth_policy, const GUID &gMapParams, const DWORD dwFileSize, const DWORD dwParamCount, std::string &logon_data_str)
-{
     HRESULT hr;
-    json credentials = json::object();
+    // json credentials = json::object();
     for (auto &&credential : identityCtx->credentials)
     {
-        credentials[util::wstring_to_utf8(credential.first)] = util::wstring_to_utf8(credential.second);
+        request.credentials.insert({util::wstring_to_utf8(credential.first), util::wstring_to_utf8(credential.second)});
     }
 
-    if (credentials.size() == 0)
+    if (request.credentials.size() == 0)
     {
         if (identityCtx->use_sts_token)
         {
             token_t token;
             token_store_t token_store{storage::db_path()};
-            if (!token_store.retrieve(identityCtx->member_name, L"http://Passport.NET/tb", token))
+            if (!token_store.retrieve(identityCtx->member_name, L"http://Passport.NET/tb", token) || !token.is_valid())
             {
-                LOG("No credentials set for identity %s, attempted to use Passport.NET, it doesn't exist.", util::wstring_to_utf8(identityCtx->member_name).c_str());
+                LOG("No credentials set for identity %s, attempted to use Passport.NET, it doesn't exist or is invalid.", util::wstring_to_utf8(identityCtx->member_name).c_str());
                 return PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL;
             }
         }
@@ -161,7 +92,7 @@ HRESULT serialise_logon_request(identity_ctx_t *identityCtx, const std::string &
         }
     }
 
-    json token_requests = json::array();
+    // json token_requests = json::array();
 
     LPBYTE pBuffer = nullptr;
     RSTParams *pParams = nullptr;
@@ -174,70 +105,30 @@ HRESULT serialise_logon_request(identity_ctx_t *identityCtx, const std::string &
     for (DWORD i = 0; i < dwParamCount; ++i)
     {
         RSTParams *param = &pParams[i];
-        json token_request = {
-            {"service_target", util::wstring_to_utf8(param->szServiceTarget)},
-            {"service_policy", util::wstring_to_utf8(param->szServicePolicy)}};
-
-        token_requests.push_back(token_request);
+        request.token_requests.push_back({util::wstring_to_utf8(param->szServiceTarget),
+                                          util::wstring_to_utf8(param->szServicePolicy)});
     }
 
     delete[] pBuffer;
 
     // the global token is important, make sure we always request one
-    token_requests.push_back({
-        {"service_target", "http://Passport.NET/tb"},
-        {"service_policy", auth_policy},
-    });
+    request.token_requests.push_back({"http://Passport.NET/tb", auth_policy});
 
-    json logon_data = {
-        {"identity", util::wstring_to_utf8(identityCtx->member_name)},
-        {"credentials", credentials},
-        {"token_requests", token_requests}};
-
-    logon_data_str = logon_data.dump();
     return S_OK;
 }
 
-HRESULT parse_logon_response(identity_ctx_t *identityCtx, std::string &body)
+HRESULT store_security_tokens(identity_ctx_t *identityCtx, const rest::types::security_tokens_response_t &response)
 {
-    // {
-    //   "puid": 12345,
-    //   "cid": "asdf",
-    //   "username": "asdf",
-    //   "email_address": "asdf@live.com",
-    //   "security_tokens": [
-    //     {
-    //       "service_target": "http://Passport.NET/tb",
-    //       "token": "snip",
-    //       "token_type": "JWT",
-    //       "created": "2025-08-10T15:42:46.0775874+01:00",
-    //       "expires": "2025-09-09T15:42:46.0775874+01:00"
-    //     }
-    //   ]
-    // }
-
-    auto response = json::parse(body, nullptr, false);
-    if (response.is_discarded())
-    {
-        return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
-    }
-
-    if (response["error_code"].is_number_integer())
-    {
-        // server reported an error
-        return response["error_code"].get<HRESULT>();
-    }
-
-    const auto &username = response["username"].get<std::string>();
+    const auto &username = response.username;
 
     {
         identity_store_t identity_store{storage::db_path()};
 
         identity_t identity;
         identity.identity = util::wstring_to_utf8(identityCtx->member_name);
-        identity.puid = response["puid"].get<int64_t>();
-        identity.cid = response["cid"].get<std::string>();
-        identity.email = response["email_address"].get<std::string>();
+        identity.puid = response.puid;
+        identity.cid = response.cid;
+        identity.email = response.email_address;
         identity.display_name = username;
 
         if (!identity_store.store(identity))
@@ -245,23 +136,10 @@ HRESULT parse_logon_response(identity_ctx_t *identityCtx, std::string &body)
     }
 
     {
-        if (!response.contains("security_tokens") || !response["security_tokens"].is_array())
-        {
-            LOG("No security tokens found in response for %s", username.c_str());
-            return S_OK; // no tokens to store, but not an error
-        }
-
         token_store_t token_store{storage::db_path()};
-
-        const auto &tokens = response["security_tokens"];
-        for (size_t i = 0; i < tokens.size(); i++)
+        for (const auto &sec_token : response.security_tokens)
         {
-            const auto &token = tokens[i];
-
-            token_t t;
-            token_t::from_json(t, token);
-            t.identity = util::wstring_to_utf8(identityCtx->member_name);
-
+            token_t t = sec_token.to_token(util::wstring_to_utf8(identityCtx->member_name));
             if (!token_store.store(t))
                 continue;
         }
@@ -286,7 +164,9 @@ IOCTL_FUNC(HandleLogMessage)
     if (pBufIn == NULL || dwLenIn == 0)
         return E_INVALIDARG;
 
-    LOG("LOGMSG [0x%08x] %s", hContext, pBufIn);
+    // Ensure NUL-terminated within the supplied buffer before passing to LOG.
+    std::string msg(reinterpret_cast<const char *>(pBufIn), dwLenIn);
+    LOG("LOGMSG [0x%08x] %s", hContext, msg.c_str());
 
     return S_OK;
 }
@@ -296,7 +176,12 @@ IOCTL_FUNC(HandleLogMessageWide)
     if (pBufIn == NULL || dwLenIn == 0)
         return E_INVALIDARG;
 
-    const char *tmp = wchar_to_char((const wchar_t *)pBufIn);
+    // Limit to the supplied byte count so we never walk off the end of the buffer.
+    size_t wcharCount = dwLenIn / sizeof(wchar_t);
+    std::wstring wmsg(reinterpret_cast<const wchar_t *>(pBufIn), wcharCount);
+    const char *tmp = wchar_to_char(wmsg.c_str());
+    if (tmp == nullptr)
+        return E_OUTOFMEMORY;
 
     LOG_WIDE(L"LOGMSG [0x%08x] %s", hContext, tmp);
 
@@ -327,7 +212,7 @@ IOCTL_FUNC(InitHandle)
     std::memcpy(&hContext->app, &pArgs->gApp, sizeof(GUID));
     hContext->major_version = pArgs->dwMajorVersion;
     hContext->minor_version = pArgs->dwMinorVersion;
-    hContext->exec_path = {pArgs->szExecutable};
+    hContext->exec_path = std::wstring(pArgs->szExecutable, wcslen(pArgs->szExecutable));
 
     WCHAR lpGuid[40] = {0};
     StringFromGUID2(pArgs->gApp, lpGuid, 40);
@@ -380,8 +265,8 @@ IOCTL_FUNC(GetDefaultID)
 
     VALIDATE_PARAMETER(default_id.size() >= 256);
 
-    wcsncpy(data.szDefaultId, default_id.c_str(), 256);
-    data.szDefaultId[default_id.size()] = '\0';
+    wcsncpy(data.szDefaultId, default_id.c_str(), 255);
+    data.szDefaultId[255] = L'\0';
 
     std::memcpy(pBufOut, &data, sizeof(IOCTL_GET_DEFAULT_ID_RETURN));
     return hr;
@@ -396,7 +281,9 @@ IOCTL_FUNC(CreateIdentityHandle)
     auto *pArgs = reinterpret_cast<PIOCTL_CREATE_IDENTITY_HANDLE_ARGS>(pBufIn);
     auto *pReturn = reinterpret_cast<PIOCTL_CREATE_IDENTITY_HANDLE_RETURN>(pBufOut);
 
-    auto *identityCtx = new (std::nothrow) identity_ctx_t(hContext, pArgs->szMemberName, pArgs->dwIdentityFlags);
+    // Bound the member name to the declared field size before constructing.
+    std::wstring memberName(pArgs->szMemberName, wcslen(pArgs->szMemberName));
+    auto *identityCtx = new (std::nothrow) identity_ctx_t(hContext, memberName.c_str(), pArgs->dwIdentityFlags);
     if (identityCtx == nullptr)
         return E_OUTOFMEMORY;
 
@@ -430,8 +317,12 @@ IOCTL_FUNC(CloseIdentityHandle)
     auto &identities = hContext->associated_identities;
     identity_ctx_t *identity = reinterpret_cast<identity_ctx_t *>(pArgs->hIdentity);
 
-    identities.erase(std::remove(identities.begin(), identities.end(), identity), identities.end());
+    // Only delete a pointer we own — reject arbitrary userspace addresses.
+    auto it = std::find(identities.begin(), identities.end(), identity);
+    if (it == identities.end())
+        return E_INVALIDARG;
 
+    identities.erase(it);
     delete identity;
 
     return hr;
@@ -455,20 +346,34 @@ IOCTL_FUNC(GetIdentityPropertyByName)
 
     auto member_name_utf8 = util::wstring_to_utf8(identityCtx->member_name);
 
+    LOG("looking up identity property for member %s", member_name_utf8.c_str());
+
     {
         identity_t identity;
         identity_store_t id_store{storage::db_path()};
 
         if (!id_store.retrieve(member_name_utf8, identity))
-            return E_UNEXPECTED;
+        {
+            LOG("member %s not found?? trying default name", member_name_utf8.c_str());
+
+            member_name_utf8 = util::wstring_to_utf8(config::default_id());
+            if (!id_store.retrieve(member_name_utf8, identity))
+            {
+                LOG("default member %s not found?? c'est buggered!!", member_name_utf8.c_str());
+                return E_UNEXPECTED;
+            }
+
+            // we probably dont want this
+            identityCtx->member_name = config::default_id();
+        }
 
         if (_wcsicmp(pArgs->szPropertyName, L"MemberName") == 0)
         {
             std::wstring member_name = util::utf8_to_wstring(identity.identity);
 
             VALIDATE_PARAMETER(member_name.size() >= 128);
-            wcsncpy(pReturn->szPropertyValue, member_name.c_str(), 128);
-            pReturn->szPropertyValue[member_name.size()] = '\0';
+            wcsncpy(pReturn->szPropertyValue, member_name.c_str(), 127);
+            pReturn->szPropertyValue[127] = L'\0';
 
             return S_OK;
         }
@@ -478,8 +383,8 @@ IOCTL_FUNC(GetIdentityPropertyByName)
             std::wstring cuid = util::utf8_to_wstring(identity.cid);
 
             VALIDATE_PARAMETER(cuid.size() >= 128);
-            wcsncpy(pReturn->szPropertyValue, cuid.c_str(), 128);
-            pReturn->szPropertyValue[cuid.size()] = '\0';
+            wcsncpy(pReturn->szPropertyValue, cuid.c_str(), 127);
+            pReturn->szPropertyValue[127] = L'\0';
 
             return S_OK;
         }
@@ -490,7 +395,7 @@ IOCTL_FUNC(GetIdentityPropertyByName)
             // stream << std::hex << identity.puid;
             // std::wstring puid(stream.str());
 
-            swprintf(pReturn->szPropertyValue, L"%016X", identity.puid);
+            swprintf(pReturn->szPropertyValue, L"%I64X", identity.puid);
 
             return S_OK;
         }
@@ -499,13 +404,14 @@ IOCTL_FUNC(GetIdentityPropertyByName)
     {
         identity_token_store_t ps{storage::db_path(), member_name_utf8, true};
         std::wstring value{};
+        std::wstring propName(pArgs->szPropertyName, wcslen(pArgs->szPropertyName));
 
-        if (!ps.get(pReturn->szPropertyValue, value))
+        if (!ps.get(propName, value))
             return S_FALSE;
 
         VALIDATE_PARAMETER(value.size() >= 128);
-        wcsncpy(pReturn->szPropertyValue, value.c_str(), 128);
-        pReturn->szPropertyValue[value.size()] = '\0';
+        wcsncpy(pReturn->szPropertyValue, value.c_str(), 127);
+        pReturn->szPropertyValue[127] = L'\0';
 
         return S_OK;
     }
@@ -545,14 +451,37 @@ IOCTL_FUNC(SetCredential)
     if (identityCtx == nullptr)
         return E_INVALIDARG;
 
+    auto is_asterisks = [](std::wstring &str) -> bool
+    {
+        for (auto c : str)
+        {
+            if (c != L'*')
+                return false;
+        }
+
+        return true;
+    };
+
     auto credentialType = std::wstring(pArgs->szCredentialType);
     auto credentialValue = std::wstring(pArgs->szCredential);
 
-    identityCtx->use_sts_token = false;
-    identityCtx->credentials[credentialType] = credentialValue;
+    if (credentialValue.length() > 0 && !is_asterisks(credentialValue))
+    {
+        identityCtx->use_sts_token = false;
+        identityCtx->credentials[credentialType] = credentialValue;
+    }
+    else
+    {
+        identity_token_store_t ps{storage::db_path(), util::wstring_to_utf8(identityCtx->member_name)};
+        if (ps.get(credentialType, credentialValue))
+        {
+            identityCtx->use_sts_token = false;
+            identityCtx->credentials[credentialType] = credentialValue;
+        }
+    }
 
-    LOG("SetCredential: hIdentity=0x%08hx; szCredentialType=%s; szCredential=REDACTED;",
-        pArgs->hIdentity, util::wstring_to_utf8(credentialType).c_str());
+    LOG("SetCredential: hIdentity=0x%08hx; szCredentialType=%s; szCredential=%s;",
+        pArgs->hIdentity, util::wstring_to_utf8(credentialType).c_str(), util::wstring_to_utf8(credentialValue).c_str());
 
     return S_OK;
 }
@@ -590,7 +519,10 @@ IOCTL_FUNC(PersistCredential)
     return S_OK;
 }
 
-#define AUTHENTICATED_USING_PASSWORD 0x48803
+#define PPCRL_AUTHSTATE_S_AUTHENTICATED_PASSWORD 0x48803
+#define PPCRL_AUTHSTATE_E_EXPIRED 0x80048801
+
+#define PPCRL_E_UNABLE_TO_RETRIEVE_SERVICE_TOKEN 0x80048862
 
 IOCTL_FUNC(GetAuthStateEx)
 {
@@ -614,15 +546,22 @@ IOCTL_FUNC(GetAuthStateEx)
     token_store_t ts{storage::db_path()};
     if (ts.retrieve(identityCtx->member_name, target, token))
     {
-        pReturn->dwAuthState = AUTHENTICATED_USING_PASSWORD;
+        if (!token.is_valid())
+        {
+            pReturn->dwAuthState = PPCRL_AUTHSTATE_E_EXPIRED;
+            pReturn->dwAuthRequired = 0x00048808;
+            pReturn->dwRequestStatus = PPCRL_E_UNABLE_TO_RETRIEVE_SERVICE_TOKEN;
+        }
+
+        pReturn->dwAuthState = PPCRL_AUTHSTATE_S_AUTHENTICATED_PASSWORD;
         pReturn->dwAuthRequired = 0;
         pReturn->dwRequestStatus = S_OK;
     }
     else
     {
-        pReturn->dwAuthState = AUTHENTICATED_USING_PASSWORD;
+        pReturn->dwAuthState = PPCRL_AUTHSTATE_S_AUTHENTICATED_PASSWORD;
         pReturn->dwAuthRequired = 0x00048808;
-        pReturn->dwRequestStatus = 0x80048862;
+        pReturn->dwRequestStatus = PPCRL_E_UNABLE_TO_RETRIEVE_SERVICE_TOKEN;
     }
 
     // wcsncpy(pReturn->szWebFlowUrl, L"https://example.com/auth", 512);
@@ -652,13 +591,13 @@ IOCTL_FUNC(AuthIdentityToService)
     {
         token_t token;
         token_store_t token_store{storage::db_path()};
-        if (token_store.retrieve(identityCtx->member_name, service_target, token))
+        if (token_store.retrieve(identityCtx->member_name, service_target, token) && token.is_valid())
         {
             std::wstring token_wide = util::utf8_to_wstring(token.token);
-            VALIDATE_PARAMETER(token_wide.size() >= 1024)
+            VALIDATE_PARAMETER(token_wide.size() >= 4096)
 
-            wcsncpy(pReturn->szToken, token_wide.c_str(), 1024);
-            pReturn->szToken[token_wide.size()] = '\0';
+            wcsncpy(pReturn->szToken, token_wide.c_str(), 4095);
+            pReturn->szToken[4095] = L'\0';
             pReturn->dwResultFlags = SERVICE_TOKEN_FROM_CACHE;
 
             return S_OK;
@@ -667,74 +606,37 @@ IOCTL_FUNC(AuthIdentityToService)
         return PPCRL_REQUEST_E_PASSWORD_EXPIRED;
     }
 
-    HRESULT hr;
-    std::string rst_endpoint = g_requestTokensEndpoint;
-    std::string logon_data_str;
+    rest::types::security_tokens_request_t request{
+        .identity = util::wstring_to_utf8(identityCtx->member_name)};
 
-    {
-        json credentials = json::object();
-        for (auto &&credential : identityCtx->credentials)
-        {
-            if (!(credential.first == L"ps:password" && credential.second.find_first_not_of('*') == std::wstring::npos))
-                credentials[util::wstring_to_utf8(credential.first)] = util::wstring_to_utf8(credential.second);
-        }
+    for (auto &&credential : identityCtx->credentials)
+        request.credentials.insert({util::wstring_to_utf8(credential.first), util::wstring_to_utf8(credential.second)});
 
-        if (credentials.size() == 0)
-        {
-            if (identityCtx->use_sts_token)
-            {
-                token_t token;
-                token_store_t token_store{storage::db_path()};
-                if (!token_store.retrieve(identityCtx->member_name, L"http://Passport.NET/tb", token))
-                {
-                    LOG("No credentials set for identity %s, attempted to use STS, it doesn't exist.", util::wstring_to_utf8(identityCtx->member_name).c_str());
-                    return PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL;
-                }
-            }
-            else
-            {
-                LOG("No credentials set for identity %s", util::wstring_to_utf8(identityCtx->member_name).c_str());
-                return PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL;
-            }
-        }
+    request.token_requests.push_back({util::wstring_to_utf8(service_target),
+                                      util::wstring_to_utf8(service_policy)});
 
-        json token_requests = json::array();
-        token_requests.push_back({
-            {"service_target", util::wstring_to_utf8(service_target)},
-            {"service_policy", util::wstring_to_utf8(service_policy)},
-        });
+    rest::types::security_tokens_response_t response{};
 
-        // the global token is important, make sure we always request one
-        token_requests.push_back({
-            {"service_target", "http://Passport.NET/tb"},
-            {"service_policy", "JWT"},
-        });
-
-        json logon_data = {
-            {"identity", util::wstring_to_utf8(identityCtx->member_name)},
-            {"credentials", credentials},
-            {"token_requests", token_requests}};
-
-        logon_data_str = logon_data.dump();
-    }
-
-    // LOG("AuthIdentityToService data: %s", logon_data_str.c_str());
-
-    net::result_t result{};
     rest::reliveid_client_t client{identityCtx};
-    if (FAILED(hr = client.post(rst_endpoint, logon_data_str, result)))
+    rest::error_t error = client.request_security_tokens(request, response);
+    if (error.failed())
     {
-        LOG("Failed to send logon request: 0x%08x", hr);
+        LOG("request_security_tokens failed 0x%08x", error.hr);
+        return error.hr;
+    }
+
+    HRESULT hr;
+    if (FAILED(hr = store_security_tokens(identityCtx, response)))
+    {
+        LOG("store_security_tokens failed 0x%08x", error.hr);
         return hr;
     }
 
-    if (FAILED(hr = parse_logon_response(identityCtx, result.body)))
-    {
-        LOG("Failed to parse logon response: 0x%08x", hr);
-        return hr;
-    }
+    auto &token = response.security_tokens[0];
+    std::wstring token_wide = util::utf8_to_wstring(token.token);
+    wcsncpy(pReturn->szToken, token_wide.c_str(), 4095);
+    pReturn->szToken[4095] = L'\0';
 
-end:
     return S_OK;
 }
 
@@ -747,30 +649,25 @@ IOCTL_FUNC(AuthIdentityToServiceEx)
     if (identityCtx == nullptr)
         return E_INVALIDARG;
 
+    rest::types::security_tokens_request_t request{};
+    rest::types::security_tokens_response_t response{};
+
     HRESULT hr;
-    std::string rst_endpoint = g_requestTokensEndpoint;
-    std::string data;
-    if (FAILED(hr = serialise_logon_request(identityCtx, "LEGACY", pArgs->gMapParams, pArgs->dwFileSize, pArgs->dwParamCount, data)))
+    if (FAILED(hr = serialise_logon_request(identityCtx, "LEGACY", pArgs->gMapParams, pArgs->dwFileSize, pArgs->dwParamCount, request)))
     {
         LOG("Failed to serialise logon request for identity context 0x%08x", identityCtx);
         return hr;
     }
 
-    net::result_t result{};
     rest::reliveid_client_t client{identityCtx};
-    if (FAILED(hr = client.post(rst_endpoint, data, result)))
+    rest::error_t error = client.request_security_tokens(request, response);
+    if (error.failed())
     {
-        LOG("Failed to send logon request: 0x%08x", hr);
-        return hr;
+        LOG("request_security_tokens failed 0x%08x", error.hr);
+        return error.hr;
     }
 
-    if (FAILED(hr = parse_logon_response(identityCtx, result.body)))
-    {
-        LOG("Failed to parse logon response: 0x%08x", hr);
-        return hr;
-    }
-
-    return S_OK;
+    return store_security_tokens(identityCtx, response);
 }
 
 IOCTL_FUNC(LogonIdentityEx)
@@ -792,50 +689,32 @@ IOCTL_FUNC(LogonIdentityEx)
         memberName.c_str(),
         auth_policy.c_str());
 
-    std::string rst_endpoint = g_requestTokensEndpoint;
-    std::string data;
-    if (FAILED(hr = serialise_logon_request(identityCtx, auth_policy, pArgs->gMapParams, pArgs->dwFileSize, pArgs->dwParamCount, data)))
+    rest::types::security_tokens_request_t request{};
+    rest::types::security_tokens_response_t response{};
+
+    if (FAILED(hr = serialise_logon_request(identityCtx, auth_policy, pArgs->gMapParams, pArgs->dwFileSize, pArgs->dwParamCount, request)))
     {
         LOG("Failed to serialise logon request for identity %s", memberName.c_str());
         return E_FAIL;
     }
 
-    // LOG("LogonIdentityEx data: %s", data.c_str());
-
-    std::vector<std::string> additional_headers{};
     if (identityCtx->use_sts_token)
     {
         token_t token{};
         token_store_t token_store{storage::db_path()};
-        if (token_store.retrieve(identityCtx->member_name, L"http://Passport.NET/tb", token))
-            additional_headers.push_back("Authorization: Bearer " + token.token);
-        else
+        if (!token_store.retrieve(identityCtx->member_name, L"http://Passport.NET/tb", token) || !token.is_valid())
             return PPCRL_REQUEST_E_MISSING_PRIMARY_CREDENTIAL;
     }
 
-    net::client_t client{};
-    net::result_t result = client.post(rst_endpoint, data, "application/json", additional_headers);
-    if (result.curl_error != CURLE_OK)
+    rest::reliveid_client_t client{identityCtx};
+    rest::error_t error = client.request_security_tokens(request, response);
+    if (error.failed())
     {
-        return HRESULT_FROM_CURLE(result.curl_error);
+        LOG("request_security_tokens failed 0x%08x", error.hr);
+        return error.hr;
     }
 
-    // LOG("Received response: %s", result.body.c_str());
-
-    if (result.status_code != 200 && result.status_code != 401)
-    {
-        LOG("LogonIdentityEx failed with status code %ld", result.status_code);
-        return HRESULT_FROM_HTTP(result.status_code);
-    }
-
-    if (FAILED(hr = parse_logon_response(identityCtx, result.body)))
-    {
-        LOG("Failed to parse logon response: 0x%08x", hr);
-        return hr;
-    }
-
-end:
-    return S_OK;
+    return store_security_tokens(identityCtx, response);
 }
 
 IOCTL_FUNC(EnumIdentitiesWithCachedCredentials)
@@ -863,11 +742,15 @@ IOCTL_FUNC(EnumIdentitiesWithCachedCredentials)
         return S_OK;
     }
 
-    DWORD cbSize = 0;
+    // Accumulate in 64-bit to detect overflow before truncating to DWORD.
+    uint64_t cbSize64 = 0;
     for (auto &&identity : identities)
-    {
-        cbSize += (identity.size() + 1) * sizeof(WCHAR);
-    }
+        cbSize64 += (uint64_t)(identity.size() + 1) * sizeof(WCHAR);
+
+    if (cbSize64 > 16 * 1024 * 1024) // 16 MB sanity cap
+        return HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);
+
+    DWORD cbSize = (DWORD)cbSize64;
 
     GUID guid = {0};
     WCHAR szGuid[40] = {0};
@@ -890,8 +773,11 @@ IOCTL_FUNC(EnumIdentitiesWithCachedCredentials)
     DWORD dwOffset = 0;
     for (auto &&identity : identities)
     {
+        DWORD entryBytes = (DWORD)(identity.size() + 1) * sizeof(WCHAR);
+        if ((uint64_t)dwOffset + entryBytes > cbSize)
+            break; // should never happen given the pre-calculated size
         wcscpy((LPWSTR)(pMapView + dwOffset), identity.c_str());
-        dwOffset += (identity.size() + 1) * sizeof(WCHAR);
+        dwOffset += entryBytes;
     }
 
     FlushViewOfFile(pMapView, cbSize);
@@ -926,7 +812,7 @@ IOCTL_FUNC(GetDeviceId)
 
     {
         config_store_t ct{storage::db_path()};
-        std::wstring str = ct.get(L"DeviceDefaultID");
+        std::wstring str = ct.get(L"DeviceDefaultID_v1");
         if (str.empty())
         {
             // TODO: i do not know if this is necessary but we're going to do the provisioning now
@@ -935,7 +821,7 @@ IOCTL_FUNC(GetDeviceId)
                 return hr;
             }
 
-            str = ct.get(L"DeviceDefaultID");
+            str = ct.get(L"DeviceDefaultID_v1");
         }
 
         wcsncpy(pReturn->szDeviceId, str.data(), 128);
@@ -950,8 +836,124 @@ IOCTL_FUNC(GetDeviceId)
         }
 
         std::string raw_thumbprint = base64::from_base64(device_cert_thumb);
+        if (raw_thumbprint.size() < 20)
+            return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
         memcpy(pReturn->bDeviceCertThumb, raw_thumbprint.c_str(), 20);
     }
 
+    return S_OK;
+}
+
+HRESULT DeserializeRSTParams(GUID gMapParams, DWORD dwSize, LPBYTE *ppBuffer, RSTParams **ppParams)
+{
+    if (ppBuffer == nullptr || ppParams == nullptr)
+    {
+        LOG("%s", "Invalid arguments: ppBuffer or ppParams is NULL");
+        return E_INVALIDARG;
+    }
+
+    *ppBuffer = nullptr;
+    *ppParams = nullptr;
+
+    if (IsEqualGUID(gMapParams, GUID{0}))
+    {
+        LOG("%s", "GUID is empty, no parameters to deserialize.");
+        return S_FALSE;
+    }
+
+    WCHAR szGuid[40] = {0};
+    StringFromGUID2(gMapParams, szGuid, 40);
+
+    HANDLE hMap = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, dwSize, szGuid);
+    if (hMap == NULL)
+    {
+        LOG("OpenFileMapping failed: %d", GetLastError());
+        return HRESULT_FROM_WIN32(GetLastError());
+    }
+
+    BYTE *pMapView = (BYTE *)MapViewOfFile(hMap, FILE_MAP_READ, 0, 0, 0);
+    if (pMapView == NULL)
+    {
+        CloseHandle(hMap);
+        LOG("MapViewOfFile failed: %d", GetLastError());
+        return HRESULT_FROM_WIN32(GetLastError());
+    }
+
+    // Validate the caller-supplied size against the actual mapping size.
+    if (dwSize < sizeof(DWORD) * 2)
+    {
+        UnmapViewOfFile(pMapView);
+        CloseHandle(hMap);
+        return E_INVALIDARG;
+    }
+
+    DWORD cbSize = *(DWORD *)pMapView;
+    if (cbSize > dwSize || cbSize < sizeof(DWORD) * 2)
+    {
+        UnmapViewOfFile(pMapView);
+        CloseHandle(hMap);
+        return E_INVALIDARG;
+    }
+
+    BYTE *pBuffer = new (std::nothrow) BYTE[cbSize];
+    if (pBuffer == NULL)
+    {
+        UnmapViewOfFile(pMapView);
+        CloseHandle(hMap);
+        return E_OUTOFMEMORY;
+    }
+
+    std::memcpy(pBuffer, pMapView, cbSize);
+    UnmapViewOfFile(pMapView);
+    CloseHandle(hMap);
+
+    // first 4 bytes are the total size, next 4 bytes are the parameter count
+    DWORD dwParamCount = *(DWORD *)(pBuffer + 4);
+
+    // Validate that the declared params fit within the buffer.
+    if (dwParamCount > (cbSize - 8) / sizeof(RSTParams))
+    {
+        delete[] pBuffer;
+        return E_INVALIDARG;
+    }
+
+    RSTParams *pParams = reinterpret_cast<RSTParams *>(pBuffer + 8);
+    for (int i = 0; i < (int)dwParamCount; ++i)
+    {
+        // fixup the pointers in the RSTParams structure, validating offsets
+        RSTParams *pParam = &pParams[i];
+        if (pParam->szServiceTarget != nullptr)
+        {
+            DWORD_PTR offset = (DWORD_PTR)pParam->szServiceTarget;
+            if (offset < 8 || offset >= cbSize)
+            {
+                delete[] pBuffer;
+                return E_INVALIDARG;
+            }
+            pParam->szServiceTarget = reinterpret_cast<LPWSTR>(pBuffer + offset);
+        }
+        if (pParam->szServicePolicy != nullptr)
+        {
+            DWORD_PTR offset = (DWORD_PTR)pParam->szServicePolicy;
+            if (offset < 8 || offset >= cbSize)
+            {
+                delete[] pBuffer;
+                return E_INVALIDARG;
+            }
+            pParam->szServicePolicy = reinterpret_cast<LPWSTR>(pBuffer + offset);
+        }
+
+        LOG("Param %d: ServiceTarget=%s, ServicePolicy=%s, TokenFlags=%d, TokenParam=%d",
+            i,
+            pParam->szServiceTarget ? util::wstring_to_utf8(pParam->szServiceTarget).c_str() : "NULL",
+            pParam->szServicePolicy ? util::wstring_to_utf8(pParam->szServicePolicy).c_str() : "NULL",
+            pParam->dwTokenFlags,
+            pParam->dwTokenParam);
+    }
+
+    *ppBuffer = pBuffer;
+    *ppParams = pParams;
+
+    LOG("Deserialized %d parameters from the buffer.", dwParamCount);
     return S_OK;
 }

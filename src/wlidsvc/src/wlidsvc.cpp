@@ -100,12 +100,17 @@ extern "C"
     {
         // init_errno();
 
-        psa_crypto_init();
+        // psa_crypto_init();
         curl_global_init(CURL_GLOBAL_DEFAULT);
         InitializeCriticalSection(&g_wlidSvcReadyCritSect);
         InitializeCriticalSection(&g_ClientConfigCritSect);
         InitializeCriticalSection(&g_dbCritSect);
         g_tlsIsImpersonatedIdx = TlsAlloc();
+        if (g_tlsIsImpersonatedIdx == TLS_OUT_OF_INDEXES)
+        {
+            LOG("%s", "TlsAlloc failed: TLS_OUT_OF_INDEXES");
+            return FALSE;
+        }
 
         LOG("%s", "WLI_Init called!");
 
@@ -128,7 +133,9 @@ extern "C"
             }
         }
 
-        CreateThread(NULL, 0, CheckForUpdatesThreadProc, NULL, 0, NULL);
+        HANDLE hUpdateThread = CreateThread(NULL, 0, CheckForUpdatesThreadProc, NULL, 0, NULL);
+        if (hUpdateThread != NULL)
+            CloseHandle(hUpdateThread);
         SetEvent(g_hWlidSvcReady);
 
 #ifdef UNDER_CE
@@ -150,6 +157,8 @@ extern "C"
 
     BOOL WLI_Close(DWORD_PTR hContext)
     {
+        if (hContext == 0)
+            return FALSE;
         LOG("WLI_Close called for context %p", hContext);
         delete ((wlidsvc::handle_ctx_t *)hContext);
         LOG("Context %p closed, remaining instance count: %d", hContext, InterlockedDecrement(&g_instanceCount));

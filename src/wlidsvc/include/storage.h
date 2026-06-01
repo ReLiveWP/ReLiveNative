@@ -36,6 +36,7 @@ struct sqlite3_stmt;
     "  type TEXT,"                                                               \
     "  expires TEXT,"                                                            \
     "  created TEXT,"                                                            \
+    "  invalid INTEGER NOT NULL DEFAULT 0,"                                      \
     "  PRIMARY KEY (identity, service),"                                         \
     "  FOREIGN KEY (identity) REFERENCES identities(identity) ON DELETE CASCADE" \
     ");"
@@ -59,7 +60,7 @@ struct sqlite3_stmt;
 
 namespace wlidsvc::storage
 {
-    constexpr int CURRENT_SCHEMA_VERSION = 3;
+    constexpr int CURRENT_SCHEMA_VERSION = 4;
 
     class base_store_t
     {
@@ -129,6 +130,12 @@ namespace wlidsvc::storage
         }
 
         bool remove(const token_t &token);
+        bool mark_invalid(const std::string &identity, const std::string &service);
+
+        inline bool mark_invalid(const std::wstring &identity, const std::wstring &service)
+        {
+            return mark_invalid(wlidsvc::util::wstring_to_utf8(identity), wlidsvc::util::wstring_to_utf8(service));
+        }
 
         struct forward_iterator
         {

@@ -91,11 +91,16 @@ namespace wlidsvc::storage
         int rc = sqlite3_step(stmt);
         if (rc == SQLITE_ROW)
         {
+            auto col_str = [&](int col) -> std::string
+            {
+                const unsigned char *v = sqlite3_column_text(stmt, col);
+                return v ? reinterpret_cast<const char *>(v) : "";
+            };
             out_identity.identity = identity;
             out_identity.puid = sqlite3_column_int64(stmt, 0);
-            out_identity.cid = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
-            out_identity.email = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 2));
-            out_identity.display_name = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 3));
+            out_identity.cid = col_str(1);
+            out_identity.email = col_str(2);
+            out_identity.display_name = col_str(3);
             sqlite3_finalize(stmt);
             return true;
         }

@@ -37,7 +37,11 @@ namespace wlidsvc::storage
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value;";
 
         sqlite3_stmt *stmt;
-        prepare(sql, &stmt);
+        if (prepare(sql, &stmt) != SQLITE_OK)
+        {
+            LOG("Failed to prepare config set statement: %s", sqlite3_errmsg(db));
+            return;
+        }
         sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 2, value.c_str(), -1, SQLITE_TRANSIENT);
         step_and_finalize(stmt);
@@ -47,13 +51,18 @@ namespace wlidsvc::storage
     {
         const char *sql = "SELECT value FROM wlid_config WHERE key = ?;";
         sqlite3_stmt *stmt;
-        prepare(sql, &stmt);
+        if (prepare(sql, &stmt) != SQLITE_OK)
+        {
+            LOG("Failed to prepare config get statement: %s", sqlite3_errmsg(db));
+            return default_value;
+        }
         sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_TRANSIENT);
 
         int rc = sqlite3_step(stmt);
         if (rc == SQLITE_ROW)
         {
-            std::string val(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
+            const unsigned char *col = sqlite3_column_text(stmt, 0);
+            std::string val = col ? reinterpret_cast<const char *>(col) : "";
             sqlite3_finalize(stmt);
             return val;
         }

@@ -2,6 +2,7 @@
 #include "logging.h"
 
 #include <assert.h>
+#include <climits>
 
 using namespace msidcrl::globals;
 
@@ -20,8 +21,11 @@ extern "C"
             return S_FALSE;
         }
 
-        DWORD cbSize = 8 + (sizeof(RSTParams) * dwParamCount);
-        cbSize += (cbSize % 16);
+        if (dwParamCount > (UINT_MAX - 8) / sizeof(RSTParams))
+            return E_INVALIDARG;
+
+        DWORD cbSize = 8 + (DWORD)(sizeof(RSTParams) * dwParamCount);
+        cbSize = (cbSize + 15) & ~15u;
 
         for (DWORD i = 0; i < dwParamCount; ++i)
         {
@@ -57,8 +61,8 @@ extern "C"
             offset += sizeof(RSTParams);
         }
 
-        // round offset to the nearest 16 bytes
-        offset += (offset % 16);
+        // round offset up to the nearest 16-byte boundary
+        offset = (offset + 15) & ~(DWORD_PTR)15;
 
         // create a string table for the service targets and policies
         for (DWORD i = 0; i < dwParamCount; ++i)

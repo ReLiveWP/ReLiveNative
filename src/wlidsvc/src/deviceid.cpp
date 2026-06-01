@@ -5,6 +5,8 @@
 #include "storage.h"
 #include "urls.h"
 #include "microrest.h"
+#include "client.h"
+#include "json.h"
 
 #include <string.h>
 #include <malloc.h>
@@ -14,10 +16,6 @@
 #include <string>
 #include <base64.hpp>
 #include <wlidcomm.h>
-
-#include <cerrno>
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
 
 using namespace wlidsvc::config;
 using namespace wlidsvc::storage;
@@ -86,6 +84,7 @@ namespace wlidsvc::deviceid
                                                 (PBYTE)&keyLengthBits, sizeof(keyLengthBits), 0)) != ERROR_SUCCESS)
                 {
                     LOG("NCryptSetProperty NCRYPT_LENGTH_PROPERTY failed 0x%08x;", status);
+                    NCryptFreeObject(hKey);
                     return HRESULT_FROM_WIN32(status);
                 }
 
@@ -94,6 +93,7 @@ namespace wlidsvc::deviceid
                                                 (PBYTE)&exportPolicy, sizeof(exportPolicy), 0)) != ERROR_SUCCESS)
                 {
                     LOG("NCryptSetProperty NCRYPT_EXPORT_POLICY_PROPERTY failed 0x%08x;", status);
+                    NCryptFreeObject(hKey);
                     return HRESULT_FROM_WIN32(status);
                 }
 
@@ -102,12 +102,14 @@ namespace wlidsvc::deviceid
                                                 (PBYTE)&keyUsage, sizeof(keyUsage), 0)) != ERROR_SUCCESS)
                 {
                     LOG("NCryptSetProperty NCRYPT_KEY_USAGE_PROPERTY failed 0x%08x;", status);
+                    NCryptFreeObject(hKey);
                     return HRESULT_FROM_WIN32(status);
                 }
 
                 if ((status = NCryptFinalizeKey(hKey, 0)) != ERROR_SUCCESS)
                 {
                     LOG("NCryptFinalizeKey failed 0x%08x;", status);
+                    NCryptFreeObject(hKey);
                     return HRESULT_FROM_WIN32(status);
                 }
             }
@@ -119,24 +121,6 @@ namespace wlidsvc::deviceid
                     return HRESULT_FROM_WIN32(status);
                 }
             }
-
-            // status = NCryptExportKey(hKey, 0, BCRYPT_RSAPRIVATE_BLOB, NULL, NULL, 0, &needed, 0);
-            // if (status != ERROR_SUCCESS)
-            //     return  HRESULT_FROM_WIN32(status);
-
-            // buffer = (PBYTE)calloc(needed, sizeof(BYTE));
-            // if (!buffer)
-            //     return E_OUTOFMEMORY;
-
-            // status = NCryptExportKey(hKey, 0, BCRYPT_RSAPRIVATE_BLOB, NULL, buffer, needed, &needed, 0);
-            // if (status != ERROR_SUCCESS)
-            // {
-            //     free(buffer);
-            //     return HRESULT_FROM_WIN32(status);
-            // }
-
-            // *keyOut = buffer;
-            // *len = needed;
 
             *pKeyOut = hKey;
             return S_OK;
@@ -168,9 +152,10 @@ namespace wlidsvc::deviceid
             FILETIME now;
             GetSystemTimeAsFileTime(&now);
 
-            BYTE signingTimeEncoded[256];
-            DWORD signingTimeEncodedSize = sizeof(signingTimeEncoded);
-            if (!CryptEncodeObjectEx(X509_ASN_ENCODING, szOID_RSA_signingTime, &now, 0, nullptr, signingTimeEncoded, &signingTimeEncodedSize))
+            BYTE *signingTimeEncoded = nullptr;
+            DWORD signingTimeEncodedSize = 0;
+            if (!CryptEncodeObjectEx(X509_ASN_ENCODING, szOID_RSA_signingTime, &now,
+                                     CRYPT_ENCODE_ALLOC_FLAG, nullptr, &signingTimeEncoded, &signingTimeEncodedSize))
             {
                 LOG("CryptEncodeObjectEx failed for signing time 0x%08x;", GetLastError());
                 return HRESULT_FROM_WIN32(GetLastError());
@@ -199,11 +184,13 @@ namespace wlidsvc::deviceid
             nameInfo.cRDN = 1;
             nameInfo.rgRDN = &rdn;
 
-            BYTE subjectEncoded[256];
-            DWORD subjectEncodedSize = sizeof(subjectEncoded);
-            if (!CryptEncodeObjectEx(X509_ASN_ENCODING, X509_NAME, &nameInfo, 0, nullptr, subjectEncoded, &subjectEncodedSize))
+            BYTE *subjectEncoded = nullptr;
+            DWORD subjectEncodedSize = 0;
+            if (!CryptEncodeObjectEx(X509_ASN_ENCODING, X509_NAME, &nameInfo,
+                                     CRYPT_ENCODE_ALLOC_FLAG, nullptr, &subjectEncoded, &subjectEncodedSize))
             {
                 LOG("CryptEncodeObjectEx failed for subject 0x%08x;", GetLastError());
+                LocalFree(signingTimeEncoded);
                 return HRESULT_FROM_WIN32(GetLastError());
             }
 
@@ -222,6 +209,8 @@ namespace wlidsvc::deviceid
             if (!CryptSignAndEncodeCertificate(hKey, 0, X509_ASN_ENCODING, X509_CERT_REQUEST_TO_BE_SIGNED, &req, &sigAlg, nullptr, nullptr, &csrSize))
             {
                 LOG("CryptSignAndEncodeCertificate failed to get size 0x%08x;", GetLastError());
+                LocalFree(signingTimeEncoded);
+                LocalFree(subjectEncoded);
                 return HRESULT_FROM_WIN32(GetLastError());
             }
 
@@ -229,11 +218,15 @@ namespace wlidsvc::deviceid
             if (!CryptSignAndEncodeCertificate(hKey, 0, X509_ASN_ENCODING, X509_CERT_REQUEST_TO_BE_SIGNED, &req, &sigAlg, nullptr, csr.data(), &csrSize))
             {
                 LOG("CryptSignAndEncodeCertificate failed 0x%08x;", GetLastError());
+                LocalFree(signingTimeEncoded);
+                LocalFree(subjectEncoded);
                 return HRESULT_FROM_WIN32(GetLastError());
             }
 
             csrOut.assign(base64::to_base64({(char *)csr.data(), csr.size()}));
 
+            LocalFree(signingTimeEncoded);
+            LocalFree(subjectEncoded);
             return S_OK;
         }
 
@@ -285,11 +278,7 @@ namespace wlidsvc::deviceid
                 goto cleanup;
             }
 
-            if (!CertGetCertificateContextProperty(
-                    pCert,
-                    CERT_HASH_PROP_ID,
-                    thumbprint,
-                    &thumbprintSize))
+            if (!CertGetCertificateContextProperty(pCert, CERT_HASH_PROP_ID, thumbprint, &thumbprintSize))
             {
                 hr = HRESULT_FROM_WIN32(GetLastError());
                 LOG("CertGetCertificateContextProperty failed 0x%08x", hr);
@@ -298,7 +287,7 @@ namespace wlidsvc::deviceid
 
             {
                 config_store_t cs{storage::db_path()};
-                cs.set("DeviceCertThumbprint", base64::to_base64({(char *)thumbprint, thumbprintSize}));
+                cs.set("DeviceCertThumbprint_v1", base64::to_base64({(char *)thumbprint, thumbprintSize}));
             }
 
             hr = S_OK;
@@ -313,43 +302,20 @@ namespace wlidsvc::deviceid
 
         HRESULT FetchCertificate(std::string csr, std::string &device_cert)
         {
-            HRESULT hr = S_OK;
-            std::string rst_endpoint = g_provisionDeviceEndpoint;
-            json request = {{"csr", csr}};
+            identity_ctx_t device_ctx{device_id()};
 
-            std::string body = request.dump();
-            std::vector<std::string> additional_headers{};
+            rest::reliveid_client_t client{&device_ctx};
 
+            rest::error_t error{S_OK};
+            rest::types::fetch_cert_request_t request = {.csr = csr};
+            rest::types::fetch_cert_response_t response{};
+            if ((error = client.fetch_certificate(request, response)).failed())
             {
-                token_t token;
-                token_store_t token_store{storage::db_path()};
-                if (!token_store.retrieve(device_id(), L"http://Passport.NET/tb", token))
-                    return E_FAIL;
-
-                additional_headers.push_back("Authorization: Bearer " + token.token);
+                LOG("fetch_certificate failed 0x%08x", error.hr);
+                return error.hr;
             }
 
-            net::client_t client{};
-            net::result_t result = client.post(rst_endpoint, body, "application/json", additional_headers);
-            if (!result.ok())
-            {
-                return HRESULT_FROM_CURLE(result.curl_error);
-            }
-
-            if (result.status_code != 200 && result.status_code != 401)
-            {
-                LOG("GetDeviceId failed with status code %ld", result.status_code);
-                return HRESULT_FROM_HTTP(result.status_code);
-            }
-
-            auto response = json::parse(result.body, nullptr, false);
-            if (response.is_discarded())
-            {
-                LOG("GetDeviceId failed invalid JSON %s", result.body.c_str());
-                return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
-            }
-
-            device_cert.assign(response["device_cert"].get<std::string>());
+            device_cert.assign(response.device_cert);
 
             return S_OK;
         }
@@ -398,39 +364,26 @@ namespace wlidsvc::deviceid
             std::string_view member_name_str{member_name};
             std::string_view password_str{password};
 
-            json request = {
-                {"username", member_name_str},
-                {"password", password_str},
-                {"device_id", device_id}};
+            rest::types::register_device_request_t request{
+                .username = std::string(member_name_str),
+                .password = std::string(password_str),
+                .device_id = std::string(device_id)};
 
-            net::client_t client{};
-            net::result_t result = client.post(rst_endpoint, request.dump(), "application/json");
-            if (result.curl_error != CURLE_OK)
+            rest::types::register_device_response_t response{};
+
+            rest::reliveid_client_t client{nullptr};
+            rest::error_t error = client.register_device(request, response);
+            if (error.failed())
             {
-                return HRESULT_FROM_CURLE(result.curl_error);
+                LOG("register_device failed 0x%08x", error.hr);
+                return error.hr;
             }
 
-            if (result.status_code != 200 && result.status_code != 401)
+            const auto &id = response.identity;
             {
-                LOG("GetDeviceId failed with status code %ld", result.status_code);
-                return HRESULT_FROM_HTTP(result.status_code);
-            }
-
-            auto response = json::parse(result.body, nullptr, false);
-            if (response.is_discarded())
-            {
-                LOG("GetDeviceId failed invalid JSON %s", result.body.c_str());
-                return HRESULT_FROM_HTTP(result.status_code);
-            }
-
-            auto identity_json = response["identity"];
-            {
-                identity_t identity;
                 identity_store_t identity_store{storage::db_path()};
-                identity.identity = identity_json["username"].get<std::string>();
-                identity.display_name = device_id;
-                identity.puid = identity_json["puid"].get<uint64_t>();
-                identity.cid = identity_json["cid"].get<std::string>();
+                identity_t identity = id.to_identity();
+                identity.display_name = std::string(device_id);
 
                 if (!identity_store.store(identity))
                 {
@@ -438,22 +391,11 @@ namespace wlidsvc::deviceid
                 }
             }
 
-            if (!response.contains("security_tokens") || !response["security_tokens"].is_array())
-            {
-                LOG("%s", "No security tokens found in response for DEVICE");
-            }
-            else
             {
                 token_store_t token_store{storage::db_path()};
-
-                const auto &tokens = response["security_tokens"];
-                for (size_t i = 0; i < tokens.size(); i++)
+                for (const auto &sec_token : response.security_tokens)
                 {
-                    const auto &token = tokens[i];
-
-                    token_t t;
-                    token_t::from_json(t, token);
-                    t.identity = identity_json["username"].get<std::string>();
+                    token_t t = sec_token.to_token(id.username);
 
                     if (!token_store.store(t))
                     {
@@ -464,17 +406,12 @@ namespace wlidsvc::deviceid
 
                         continue;
                     }
-
-                    LOG("Stored token for DEVICE: %s (Type: %s, Expires: %s)",
-                        t.service.c_str(),
-                        t.type.c_str(),
-                        t.expires.c_str());
                 }
             }
 
             {
                 config_store_t cs{db_path()};
-                cs.set("DeviceDefaultID", identity_json["username"].get<std::string>());
+                cs.set("DeviceDefaultID_v1", id.username);
             }
 
             return S_OK;
@@ -499,14 +436,20 @@ namespace wlidsvc::deviceid
         if (FAILED(hr = cert::GenerateCertKey(hProv, &hKey)))
         {
             LOG("GenerateCertKey failed 0x%08x", hr);
+            NCryptFreeObject(hProv);
             return hr;
         }
 
         if (FAILED(hr = cert::GenerateCertificateRequest(hProv, hKey, csr)))
         {
             LOG("GenerateCertificateRequest failed 0x%08x", hr);
+            NCryptFreeObject(hKey);
+            NCryptFreeObject(hProv);
             return hr;
         }
+
+        NCryptFreeObject(hKey);
+        NCryptFreeObject(hProv);
 
         if (FAILED(hr = cert::FetchCertificate(csr, cert)))
         {
@@ -533,7 +476,7 @@ namespace wlidsvc::deviceid
 
         {
             config_store_t cs{storage::db_path()};
-            device_cert_thumb = cs.get("DeviceCertThumbprint");
+            device_cert_thumb = cs.get("DeviceCertThumbprint_v1");
         }
 
         if (!device_cert_thumb.empty())
@@ -568,6 +511,8 @@ namespace wlidsvc::deviceid
                 goto missing;
             }
 
+            CertFreeCertificateContext(pCert);
+            CertCloseStore(hStore, 0);
             return S_OK;
         }
 
@@ -600,7 +545,7 @@ namespace wlidsvc::deviceid
 
         {
             config_store_t cs{storage::db_path(), true};
-            auto default_id = cs.get("DeviceDefaultID");
+            auto default_id = cs.get("DeviceDefaultID_v1");
             if (default_id.empty())
             {
                 if (FAILED(hr = user::RegisterDevice()))

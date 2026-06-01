@@ -5,7 +5,7 @@
 
 namespace wlidsvc::net
 {
-    constexpr const char* g_userAgent = "Mozilla/4.0 (compatible; MSIE 5.01; Windows CE) WLIDSVC/1.0, ReLiveWP/1.0 (+https://github.com/ReLiveWP/ReLiveWP)";
+    constexpr const char *g_userAgent = "Mozilla/4.0 (compatible; MSIE 5.01; Windows CE) WLIDSVC/1.0, ReLiveWP/1.0 (+https://github.com/ReLiveWP/ReLiveWP)";
 
     struct result_t
     {
@@ -21,7 +21,7 @@ namespace wlidsvc::net
             return {curl_easy_strerror(curl_error)};
         }
 
-        const bool ok() const 
+        const bool success() const
         {
             return curl_error == CURLE_OK;
         }
@@ -36,32 +36,35 @@ namespace wlidsvc::net
             this->curl = (curl != nullptr ? curl : curl_easy_init());
         }
 
+        client_t(const client_t &) = delete;
+        client_t &operator=(const client_t &) = delete;
+
         ~client_t()
         {
             if (curl && owns_curl)
                 curl_easy_cleanup(curl);
         }
 
-        result_t get(const std::string &url, const std::vector<std::string> &customHeaders = {})
+        result_t get(const std::string_view &url, const std::vector<std::string> &customHeaders = {})
         {
             return request("GET", url, "", "", customHeaders);
         }
 
-        result_t post(const std::string &url, const std::string &body,
-                      const std::string &contentType = "application/json",
+        result_t post(const std::string_view &url, const std::string_view &body,
+                      const std::string_view &contentType = "application/json",
                       const std::vector<std::string> &customHeaders = {})
         {
             return request("POST", url, body, contentType, customHeaders);
         }
 
-        result_t put(const std::string &url, const std::string &body,
-                     const std::string &contentType = "application/json",
+        result_t put(const std::string_view &url, const std::string_view &body,
+                     const std::string_view &contentType = "application/json",
                      const std::vector<std::string> &customHeaders = {})
         {
             return request("PUT", url, body, contentType, customHeaders);
         }
 
-        result_t del(const std::string &url, const std::vector<std::string> &customHeaders = {})
+        result_t del(const std::string_view &url, const std::vector<std::string> &customHeaders = {})
         {
             return request("DELETE", url, "", "", customHeaders);
         }
@@ -69,7 +72,7 @@ namespace wlidsvc::net
     private:
         CURL *curl = nullptr;
         bool owns_curl = true;
-        std::string user_agent = g_userAgent;
+        const char *user_agent = g_userAgent;
         std::vector<std::string> additional_headers = {};
 
         static size_t OnWrite(void *contents, size_t size, size_t nmemb, result_t *result)
@@ -84,9 +87,9 @@ namespace wlidsvc::net
             return size * nitems;
         }
 
-        result_t request(const std::string &method, const std::string &url,
-                         const std::string &body = "",
-                         const std::string &contentType = "",
+        result_t request(const std::string_view &method, const std::string_view &url,
+                         const std::string_view &body = "",
+                         const std::string_view &contentType = "",
                          const std::vector<std::string> &customHeaders = {}) const
         {
             result_t resp{};
@@ -98,9 +101,10 @@ namespace wlidsvc::net
             }
 
             curl_easy_reset(curl); // Reset previous options
-            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+            std::string url_str(url);
+            curl_easy_setopt(curl, CURLOPT_URL, url_str.c_str());
             curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
-            curl_easy_setopt(curl, CURLOPT_USERAGENT, user_agent.c_str());
+            curl_easy_setopt(curl, CURLOPT_USERAGENT, user_agent);
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, OnWrite);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
             curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, OnHeader);
@@ -108,12 +112,12 @@ namespace wlidsvc::net
 
             struct curl_slist *headersList = nullptr;
             if (!contentType.empty())
-                headersList = curl_slist_append(headersList, ("Content-Type: " + contentType).c_str());
+                headersList = curl_slist_append(headersList, ("Content-Type: " + std::string(contentType)).c_str());
 
             for (const auto &h : customHeaders)
-                headersList = curl_slist_append(headersList, h.c_str());
+                headersList = curl_slist_append(headersList, h.data());
             for (const auto &h : additional_headers)
-                headersList = curl_slist_append(headersList, h.c_str());
+                headersList = curl_slist_append(headersList, h.data());
 
             if (headersList)
                 curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headersList);
@@ -121,12 +125,14 @@ namespace wlidsvc::net
             if (method == "POST")
             {
                 curl_easy_setopt(curl, CURLOPT_POST, 1L);
-                curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+                curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.data());
+                curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, body.size());
             }
             else if (method == "PUT")
             {
                 curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
-                curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+                curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.data());
+                curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, body.size());
             }
             else if (method == "DELETE")
             {

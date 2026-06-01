@@ -43,7 +43,7 @@ extern "C"
         }
 
         // something else failed, continuing on will just keep calling the same exception handler ad nauseum, just kill it
-        LOG_MESSAGE("WE FUCKED IT");
+        LOG_MESSAGE(L"WE FUCKED IT");
         TerminateProcess(GetCurrentProcess(), -1);
 
         return EXCEPTION_CONTINUE_SEARCH;
@@ -85,15 +85,16 @@ extern "C"
             LPCWSTR attempt = pExceptionInfo->ExceptionRecord->ExceptionInformation[0] ? L"READ" : L"WRITE";
             LOG_MESSAGE_FMT(L"Attempt to %s at address " ADDRESS_PRINTF, attempt, pExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
         }
-        // else
-        // {
-        //     return EXCEPTION_CONTINUE_SEARCH;
-        // }
+        else
+        {
+            return EXCEPTION_CONTINUE_SEARCH;
+        }
 
         HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS | TH32CS_SNAPMODULE | TH32CS_GETALLMODS, 0);
         if (hSnapshot == INVALID_HANDLE_VALUE)
         {
             LOG_MESSAGE(L"Failed to CreateToolhelp32Snapshot, you're going in blind!!");
+            LeaveCriticalSection(&msidcrl::globals::g_hDriverCrtiSec);
             return EXCEPTION_CONTINUE_SEARCH;
         }
 

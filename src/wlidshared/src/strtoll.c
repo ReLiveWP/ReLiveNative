@@ -109,6 +109,13 @@ strtoll(const char *nptr, char **endptr, register int base)
 	 * If base is 0, allow 0x for hex and 0 for octal, else
 	 * assume decimal; if base is already 16, allow 0x.
 	 */
+	if (base < 0 || base == 1 || base > 36) {
+		if (endptr != 0)
+			*endptr = (char *)nptr;
+		errno = EINVAL;
+		return 0;
+	}
+
 	do {
 		c = *s++;
 	} while (isspace(c));

@@ -90,8 +90,15 @@ namespace wlidsvc::log
         {
             this->ts_ = other.ts_;
             this->size_ = other.size_;
-            this->data_ = new char[this->size_];
-            std::memcpy(this->data_, other.data_, this->size_ * sizeof(char));
+            if (other.data_ != nullptr && other.size_ > 0)
+            {
+                this->data_ = new char[this->size_];
+                std::memcpy(this->data_, other.data_, this->size_ * sizeof(char));
+            }
+            else
+            {
+                this->data_ = nullptr;
+            }
         }
 
         logmsg_t(logmsg_t &&other) // string&& is an rvalue reference to a string
@@ -150,9 +157,15 @@ namespace wlidsvc::log
 
         bool enqueue(const logmsg_t &item)
         {
-            size_t tail = tail_.fetch_add(1, std::memory_order_acq_rel);
-            if (tail - head_.load(std::memory_order_acquire) >= Size)
-                return false;
+            size_t tail = tail_.load(std::memory_order_relaxed);
+            size_t head = head_.load(std::memory_order_acquire);
+            if (tail - head >= Size)
+                return false; // full — don't advance tail
+
+            if (!tail_.compare_exchange_strong(tail, tail + 1,
+                                               std::memory_order_acq_rel,
+                                               std::memory_order_relaxed))
+                return false; // lost the race; caller can retry
 
             buffer_[tail % Size] = item;
             return true;

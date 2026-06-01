@@ -6,14 +6,11 @@
 #include "log.h"
 #include "microrest.h"
 #include "urls.h"
+#include "json.h"
 
 #include <string>
 #include <shlobj.h>
 #include <sqlite3.h>
-
-#include <cerrno>
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
 
 using namespace wlidsvc::util;
 using namespace wlidsvc::storage;
@@ -82,7 +79,8 @@ namespace wlidsvc::config
         EnterCriticalSection(&g_ClientConfigCritSect);
         g_ClientConfigReady = SUCCEEDED(hr);
         g_ClientConfigDownloading = false;
-        SetEvent(g_ClientConfigDownloadedEvent);
+        if (g_ClientConfigDownloadedEvent != NULL)
+            SetEvent(g_ClientConfigDownloadedEvent);
         LeaveCriticalSection(&g_ClientConfigCritSect);
 
         return hr;
@@ -91,7 +89,7 @@ namespace wlidsvc::config
     const environment_t environment()
     {
         return environment_t::production;
-        
+
 #if IS_PRODUCTION_BUILD
         return environment_t::production;
 #else
@@ -115,7 +113,7 @@ namespace wlidsvc::config
     const std::wstring device_id()
     {
         config_store_t cs{db_path()};
-        return utf8_to_wstring(cs.get("DeviceDefaultID"));
+        return utf8_to_wstring(cs.get("DeviceDefaultID_v1"));
     }
 
     // static size_t OnWriteFile(void *contents, size_t size, size_t nmemb, HANDLE hFile)

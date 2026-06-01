@@ -8,12 +8,20 @@ namespace wlidsvc::storage
     const std::wstring db_path()
     {
         WCHAR szAppData[MAX_PATH] = {0};
-        SHGetSpecialFolderPath(NULL, szAppData, CSIDL_APPDATA, TRUE);
+        if (!SHGetSpecialFolderPath(NULL, szAppData, CSIDL_APPDATA, TRUE))
+        {
+            wcscpy(szAppData, L"\\Windows");
+        }
 
         const std::wstring folderPath = std::wstring(szAppData) + g_configDBFolder;
-        if (GetFileAttributes(folderPath.c_str()) == INVALID_FILE_ATTRIBUTES)
+        // CreateDirectory is idempotent (ERROR_ALREADY_EXISTS is fine).
+        if (!CreateDirectory(folderPath.c_str(), NULL))
         {
-            CreateDirectory(folderPath.c_str(), NULL);
+            DWORD err = GetLastError();
+            if (err != ERROR_ALREADY_EXISTS)
+            {
+                LOG("Failed to create config directory: 0x%08x", HRESULT_FROM_WIN32(err));
+            }
         }
 
         return folderPath + g_configDBName;
@@ -97,8 +105,7 @@ namespace wlidsvc::storage
         if ((code = sqlite3_prepare_v2(db, check_version_sql, -1, &stmt, nullptr)) != SQLITE_OK)
         {
             LOG("SQLite error: %s", sqlite3_errmsg(db));
-            sqlite3_close(db);
-            sqlite3_finalize(stmt);
+            sqlite3_close(db); // stmt is NULL on failure, finalize is a no-op
             return code;
         }
 
@@ -110,17 +117,30 @@ namespace wlidsvc::storage
 
             if (version < CURRENT_SCHEMA_VERSION)
             {
+                if (version < 4)
+                {
+                    // tokens.invalid column added in schema version 4
+                    sqlite3_exec(db,
+                                 "ALTER TABLE tokens ADD COLUMN invalid INTEGER NOT NULL DEFAULT 0;",
+                                 nullptr, nullptr, nullptr);
+                }
+
                 const char *update_version_sql =
                     "UPDATE metadata SET value = ? WHERE key = 'schema_version';";
 
                 sqlite3_stmt *update_stmt;
-                sqlite3_prepare_v2(db, update_version_sql, -1, &update_stmt, nullptr);
+                if ((rc = sqlite3_prepare_v2(db, update_version_sql, -1, &update_stmt, nullptr)) != SQLITE_OK)
+                {
+                    LOG("SQLite prepare error: %s", sqlite3_errmsg(db));
+                    sqlite3_close(db);
+                    return rc;
+                }
                 sqlite3_bind_text(update_stmt, 1, schema_version.c_str(), -1, SQLITE_TRANSIENT);
                 if ((rc = sqlite3_step(update_stmt)) != SQLITE_DONE)
                 {
+                    LOG("SQLite error: %s", sqlite3_errmsg(db));
                     sqlite3_finalize(update_stmt);
                     sqlite3_close(db);
-                    LOG("SQLite error: %s", sqlite3_errmsg(db));
                     return rc;
                 }
                 sqlite3_finalize(update_stmt);
@@ -133,13 +153,18 @@ namespace wlidsvc::storage
                 "INSERT INTO metadata (key, value) VALUES ('schema_version', ?);";
 
             sqlite3_stmt *insert_stmt;
-            sqlite3_prepare_v2(db, insert_version_sql, -1, &insert_stmt, nullptr);
+            if ((rc = sqlite3_prepare_v2(db, insert_version_sql, -1, &insert_stmt, nullptr)) != SQLITE_OK)
+            {
+                LOG("SQLite prepare error: %s", sqlite3_errmsg(db));
+                sqlite3_close(db);
+                return rc;
+            }
             sqlite3_bind_text(insert_stmt, 1, schema_version.c_str(), -1, SQLITE_TRANSIENT);
             if ((rc = sqlite3_step(insert_stmt)) != SQLITE_DONE)
             {
+                LOG("SQLite error: %s", sqlite3_errmsg(db));
                 sqlite3_finalize(insert_stmt);
                 sqlite3_close(db);
-                LOG("SQLite error: %s", sqlite3_errmsg(db));
                 return rc;
             }
             sqlite3_finalize(insert_stmt);

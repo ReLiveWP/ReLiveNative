@@ -146,6 +146,8 @@ void __gthr_win32_mutex_init_function(__gthread_mutex_t *mutex)
 {
   mutex->counter = -1;
   mutex->sema = CreateSemaphoreW(NULL, 0, 65535, NULL);
+  if (mutex->sema == NULL)
+    TerminateProcess(GetCurrentProcess(), GetLastError());
 }
 
 void __gthr_win32_mutex_destroy(__gthread_mutex_t *mutex)
@@ -189,6 +191,8 @@ void __gthr_win32_recursive_mutex_init_function(__gthread_recursive_mutex_t *mut
   mutex->depth = 0;
   mutex->owner = 0;
   mutex->sema = CreateSemaphoreW(NULL, 0, 65535, NULL);
+  if (mutex->sema == NULL)
+    TerminateProcess(GetCurrentProcess(), GetLastError());
 }
 
 int __gthr_win32_recursive_mutex_lock(__gthread_recursive_mutex_t *mutex)

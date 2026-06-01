@@ -1,9 +1,43 @@
 #include "storage.h"
 #include "log.h"
 #include <sqlite3.h>
+#include <wincrypt.h>
+#include <base64.hpp>
 
 namespace wlidsvc::storage
 {
+    // TODO: we need to hook these up with DPAPI, but we can't right now because doing so would 
+    //       break existing stored plaintext tokens.
+    
+    std::string dpapi_protect(const std::string &plaintext)
+    {
+        // DATA_BLOB in{(DWORD)plaintext.size(), (BYTE *)plaintext.data()};
+        // DATA_BLOB out{};
+        // if (!CryptProtectData(&in, nullptr, nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &out))
+        //     return plaintext; // graceful degradation if DPAPI unavailable
+        // std::string encoded = base64::to_base64(std::string(reinterpret_cast<char *>(out.pbData), out.cbData));
+        // LocalFree(out.pbData);
+        // return encoded;
+
+        return plaintext;
+    }
+
+    std::string dpapi_unprotect(const std::string &encoded)
+    {
+        // if (encoded.empty())
+        //     return encoded;
+        // std::string cipher = base64::from_base64(encoded);
+        // DATA_BLOB in{(DWORD)cipher.size(), (BYTE *)cipher.data()};
+        // DATA_BLOB out{};
+        // if (!CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &out))
+        //     return encoded; // return raw value if decryption fails (e.g., unencrypted legacy row)
+        // std::string plaintext(reinterpret_cast<char *>(out.pbData), out.cbData);
+        // LocalFree(out.pbData);
+        // return plaintext;
+
+        return encoded;
+    }
+
     token_store_t::token_store_t(const std::wstring &path, bool is_readonly)
         : base_store_t(path, is_readonly)
     {
@@ -28,10 +62,11 @@ namespace wlidsvc::storage
         util::critsect_t cs{&globals::g_dbCritSect};
 
         const char *sql =
-            "INSERT INTO tokens (identity, service, token, type, expires, created) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
+            "INSERT INTO tokens (identity, service, token, type, expires, created, invalid) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(identity, service) DO UPDATE SET "
-            "token = excluded.token, type = excluded.type, expires = excluded.expires, created = excluded.created;";
+            "token = excluded.token, type = excluded.type, expires = excluded.expires, "
+            "created = excluded.created, invalid = excluded.invalid;";
 
         sqlite3_stmt *stmt;
         if (prepare(sql, &stmt) != SQLITE_OK)
@@ -40,12 +75,14 @@ namespace wlidsvc::storage
             return false;
         }
 
+        std::string encrypted_token = dpapi_protect(token.token);
         sqlite3_bind_text(stmt, 1, token.identity.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 2, token.service.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 3, token.token.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, encrypted_token.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 4, token.type.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 5, token.expires.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 6, token.created.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(stmt, 7, token.invalid ? 1 : 0);
 
         if (step_and_finalize(stmt) != SQLITE_DONE)
         {
@@ -62,21 +99,31 @@ namespace wlidsvc::storage
     {
         LOG("Retrieving token for identity: %s, service: %s", identity.c_str(), service.c_str());
 
-        const char *sql = "SELECT token, type, expires, created FROM tokens WHERE identity = ? AND service = ?;";
+        const char *sql = "SELECT token, type, expires, created, invalid FROM tokens WHERE identity = ? AND service = ?;";
         sqlite3_stmt *stmt;
-        prepare(sql, &stmt);
+        if (prepare(sql, &stmt) != SQLITE_OK)
+        {
+            LOG("Failed to prepare token retrieve: %s", sqlite3_errmsg(db));
+            return false;
+        }
         sqlite3_bind_text(stmt, 1, identity.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 2, service.c_str(), -1, SQLITE_TRANSIENT);
+
+        auto col_str = [&](int col) -> std::string {
+            const unsigned char *v = sqlite3_column_text(stmt, col);
+            return v ? reinterpret_cast<const char *>(v) : "";
+        };
 
         int rc = sqlite3_step(stmt);
         if (rc == SQLITE_ROW)
         {
             out_token.identity = identity;
             out_token.service = service;
-            out_token.token = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
-            out_token.type = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
-            out_token.expires = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 2));
-            out_token.created = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 3));
+            out_token.token = dpapi_unprotect(col_str(0));
+            out_token.type = col_str(1);
+            out_token.expires = col_str(2);
+            out_token.created = col_str(3);
+            out_token.invalid = sqlite3_column_int(stmt, 4) != 0;
             sqlite3_finalize(stmt);
 
             return out_token.token.size() > 0;
@@ -127,7 +174,7 @@ namespace wlidsvc::storage
             return;
         }
 
-        std::string sql = "SELECT identity, service, token, type, expires, created FROM tokens";
+        std::string sql = "SELECT identity, service, token, type, expires, created, invalid FROM tokens";
         if (identity.has_value())
         {
             sql += " WHERE identity = ?";
@@ -168,13 +215,18 @@ namespace wlidsvc::storage
         int rc = sqlite3_step(stmt);
         if (rc == SQLITE_ROW)
         {
+            auto col_str = [&](int col) -> std::string {
+                const unsigned char *v = sqlite3_column_text(stmt, col);
+                return v ? reinterpret_cast<const char *>(v) : "";
+            };
             token_t token;
-            token.identity = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
-            token.service = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
-            token.token = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 2));
-            token.type = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 3));
-            token.expires = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 4));
-            token.created = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 5));
+            token.identity = col_str(0);
+            token.service = col_str(1);
+            token.token = dpapi_unprotect(col_str(2));
+            token.type = col_str(3);
+            token.expires = col_str(4);
+            token.created = col_str(5);
+            token.invalid = sqlite3_column_int(stmt, 6) != 0;
 
             current_token = token;
         }
@@ -229,5 +281,36 @@ namespace wlidsvc::storage
         }
 
         return {};
+    }
+
+    bool token_store_t::mark_invalid(const std::string &identity, const std::string &service)
+    {
+        if (is_readonly)
+        {
+            LOG("Attempted to mark token invalid in read-only store: %s", identity.c_str());
+            return false;
+        }
+
+        util::critsect_t cs{&globals::g_dbCritSect};
+
+        const char *sql = "UPDATE tokens SET invalid = 1 WHERE identity = ? AND service = ?;";
+        sqlite3_stmt *stmt;
+        if (prepare(sql, &stmt) != SQLITE_OK)
+        {
+            LOG("Failed to prepare mark_invalid: %s", sqlite3_errmsg(db));
+            return false;
+        }
+
+        sqlite3_bind_text(stmt, 1, identity.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, service.c_str(), -1, SQLITE_TRANSIENT);
+
+        if (step_and_finalize(stmt) != SQLITE_DONE)
+        {
+            LOG("Failed to mark token invalid for identity: %s, service: %s", identity.c_str(), service.c_str());
+            return false;
+        }
+
+        LOG("Marked token invalid for identity: %s, service: %s", identity.c_str(), service.c_str());
+        return true;
     }
 }

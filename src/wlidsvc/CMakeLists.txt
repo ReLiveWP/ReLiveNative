@@ -20,6 +20,7 @@ add_library(objlib_wlidsvc OBJECT
     src/update.cpp
     src/types.cpp
     src/deviceid.cpp
+    src/client.cpp
 )
 
 target_link_libraries(objlib_wlidsvc PRIVATE wlidshared nlohmann_json::nlohmann_json)
@@ -38,9 +39,6 @@ target_link_libraries(wlidsvc PRIVATE
     wlidshared
     "-lole32"
     "-latomic"
-    "-lmbedx509"
-    "-lmbedcrypto"
-    "-lmbedtls"
     "-lbcrypt"
     "-lncrypt"
     "-lcrypt32"
